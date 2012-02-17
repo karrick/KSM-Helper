@@ -16,7 +16,7 @@ WriteMakefile(
         'Test::More' => 0,
     },
     PREREQ_PM => {
-	'KSM::Logger' => 0,
+	# 'KSM::Logger' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'KSM-Helper-*' },
