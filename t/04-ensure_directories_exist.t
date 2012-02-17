@@ -23,6 +23,8 @@ sub cleanup_after_all_tests : Tests(shutdown) {
     system("rm -rf t/data");
 }
 
+########################################
+
 sub test_ensure_directories_exist_croaks_if_cannot_create : Tests {
     eval {
 	ensure_directories_exist("/root/foo/bar");
