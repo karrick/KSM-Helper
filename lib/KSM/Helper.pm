@@ -1,9 +1,11 @@
 package KSM::Helper;
 
+use utf8;
 use warnings;
 use strict;
 use Carp;
 use Fcntl qw(:flock);
+use File::Basename ();
 use File::Path ();
 use POSIX ();
 
@@ -22,14 +24,29 @@ our $VERSION = '0.01';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
+KSM::Helper provides a number of commonly used functions to expedite
+writting your program.
 
 Perhaps a little code snippet.
 
-    use KSM::Helper;
+    use KSM::Helper qw(:all);
 
-    my $foo = KSM::Helper->new();
+    with_cwd("/some/path", sub {
+                             # do something with cwd
+                           });
     ...
+
+    with_locked_file("/some/file", 
+                     sub {
+                         # do something with that file
+                     });
+    ...
+
+    with_timeout("timeout while calculating prime numbers",
+                 60,
+                 sub {
+                     # what is the 1,000,000th prime number?
+                 });
 
 =head1 EXPORT
 
@@ -42,6 +59,7 @@ be included by importing the :all tag.  For example:
 
 use Exporter qw(import);
 our %EXPORT_TAGS = ( 'all' => [qw(
+	ensure_directories_exist
 	with_cwd
 	with_locked_file
 	with_timeout
@@ -55,8 +73,8 @@ our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 Change to the specified directory, creating it if necessary, and
 execute the specified function.
 
-Upon completion of the function, including errors, change back to the
-original directory.
+Even when an error is triggered in your function, the original working
+directory is restored upon function exit.
 
 =cut
 
@@ -91,6 +109,12 @@ Execute the specified function with a given file locked.
 Lock file is created if it does not yet exist, but it is not removed
 upon completion of function.
 
+Even when an error is triggered in your function, the lock is removed
+and the file handle is closed upon function exit.
+
+This function will croak if another process has a lock on the
+specified file.
+
 =cut
 
 sub with_locked_file {
@@ -108,7 +132,8 @@ sub with_locked_file {
 
 =head2 with_timeout
 
-Execute the specified function with timeout protection.
+Executes the specified function, and terminate it early if the
+function does not return within the specified number of seconds.
 
 =cut
 
@@ -121,6 +146,23 @@ sub with_timeout {
     $result = &{$function}();
     alarm 0;
     $result;
+}
+
+=head2 ensure_directories_exist
+
+Takes and returns a filename, but creates the directory of the
+filename if it does not exist if necessary.
+
+It will croak if there are no permissions to create the required
+directories.
+
+=cut
+
+sub ensure_directories_exist {
+    my ($filename) = @_;
+    # NOTE: mkpath croaks if error
+    File::Path::mkpath(File::Basename::dirname($filename));
+    $filename;
 }
 
 =head1 AUTHOR
