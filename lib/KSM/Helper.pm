@@ -2,6 +2,10 @@ package KSM::Helper;
 
 use warnings;
 use strict;
+use Carp;
+use Fcntl qw(:flock);
+use File::Path ();
+use POSIX ();
 
 =head1 NAME
 
@@ -29,23 +33,94 @@ Perhaps a little code snippet.
 
 =head1 EXPORT
 
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
+Although nothing is exported by default, the most common functions may
+be included by importing the :all tag.  For example:
+
+    use KSM::Helper qw(:all);
+
+=cut
+
+use Exporter qw(import);
+our %EXPORT_TAGS = ( 'all' => [qw(
+	with_cwd
+	with_locked_file
+	with_timeout
+)]);
+our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 
 =head1 SUBROUTINES/METHODS
 
-=head2 function1
+=head2 with_cwd
+
+Change to the specified directory, creating it if necessary, and
+execute the specified function.
+
+Upon completion of the function, including errors, change back to the
+original directory.
 
 =cut
 
-sub function1 {
+sub with_cwd {
+    my ($new_dir,$function) = @_;
+    my $old_dir = POSIX::getcwd();
+    my $change_back;
+    if(!defined($new_dir) || $new_dir eq '') {
+        croak('empty new_dir call to with_cwd()');
+    }
+    if(!$old_dir) {
+        croak sprintf('$old_dir is empty when called with %s', $new_dir);
+    }
+    if($new_dir ne $old_dir) {
+        File::Path::mkpath($new_dir);
+        chdir($new_dir) or die($!);
+        $change_back = 1;
+    }
+    my $result = eval { &{$function}(@_) };
+    my $caught_error = $@;
+    if($change_back) {
+        chdir($old_dir) or die($!);
+    }
+    die($caught_error) if $caught_error;
+    $result;
 }
 
-=head2 function2
+=head2 with_locked_file
+
+Execute the specified function with a given file locked.
+
+Lock file is created if it does not yet exist, but it is not removed
+upon completion of function.
 
 =cut
 
-sub function2 {
+sub with_locked_file {
+    my ($file,$function) = @_;
+    open(FILE, '<', $file) or croak sprintf('unable to open: [%s]: %s',$file, $!);
+    flock(FILE, LOCK_EX | LOCK_NB) or croak sprintf('unable to lock: [%s]: %s',$file, $!);
+    my $result = eval { &{$function}($file) };
+    if($@) {
+        close(FILE);
+        die($@);
+    }
+    close(FILE);
+    $result;
+}
+
+=head2 with_timeout
+
+Execute the specified function with timeout protection.
+
+=cut
+
+sub with_timeout {
+    my ($emsg,$timeout,$function) = @_;
+    my $result;
+
+    local $SIG{ALRM} = sub {croak $emsg};
+    alarm $timeout;
+    $result = &{$function}();
+    alarm 0;
+    $result;
 }
 
 =head1 AUTHOR
