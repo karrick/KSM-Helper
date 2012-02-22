@@ -15,11 +15,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 =head1 SYNOPSIS
@@ -59,7 +59,9 @@ be included by importing the :all tag.  For example:
 
 use Exporter qw(import);
 our %EXPORT_TAGS = ( 'all' => [qw(
+	change_account
 	ensure_directories_exist
+        shell_quote
 	with_cwd
 	with_locked_file
 	with_timeout
@@ -163,6 +165,50 @@ sub ensure_directories_exist {
     # NOTE: mkpath croaks if error
     File::Path::mkpath(File::Basename::dirname($filename));
     $filename;
+}
+
+=head2 shell_quote
+
+Returns the string quoted for the shell.
+
+=cut
+
+sub shell_quote {
+    my ($input) = @_;
+    if(defined($input)) {
+	if($input eq '') {
+	    "''";
+	} else {
+	    $input =~ s/([^-0-9a-zA-Z_.\/])/\\$1/g;
+	    $input;
+	}
+    } else {
+	'';
+    }
+}
+
+=head2 change_account
+
+Returns the string prefixed by sudo to change the account.
+
+=cut
+
+sub change_account {
+    my ($input,$account) = @_;
+    if(defined($account)) {
+	if($account eq 'root') {
+	    sprintf('sudo -n %s', $input);
+	} elsif($account eq ''
+		|| $account eq $ENV{LOGNAME}) {
+	    $input;
+	} else {
+	    sprintf('sudo -inu %s %s',
+		    $account, 
+		    $input);
+	}
+    } else {
+	$input;
+    }
 }
 
 =head1 AUTHOR

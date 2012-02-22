@@ -10,6 +10,8 @@ t/01-with_cwd.t
 t/02-with_locked_file.t
 t/03-with_timeout.t
 t/04-ensure_directories_exist.t
+t/05-shell_quote.t
+t/06-change_account.t
 t/boilerplate.t
 t/manifest.t
 t/pod-coverage.t
