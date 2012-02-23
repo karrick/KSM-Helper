@@ -451,12 +451,11 @@ sub with_timeout_spawn_child {
     }
 
     my $result = eval {
-	local $SIG{CHLD} = \&REAPER;
-	foreach my $signal (qw(INT TERM)) {
-	    local $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
-	}
 	if(my $pid = fork) {
-	    setup_signal_handlers();
+	    local $SIG{CHLD} = \&REAPER;
+	    foreach my $signal (qw(INT TERM)) {
+		$SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+	    }
 	    $child->{pid} = $pid;
 	    $child->{started} = POSIX::strftime("%s", gmtime);
 	    info('spawned child %d (%s)%s', $pid, $child->{name},
@@ -498,18 +497,6 @@ sub with_timeout_spawn_child {
 	}
     };
     $result;
-}
-
-=head2
-
-Initializes INT and TERM signal handlers
-
-=cut
-
-sub setup_signal_handlers {
-    foreach my $signal (qw(INT TERM)) {
-	$SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
-    }
 }
 
 =head2 REAPER
