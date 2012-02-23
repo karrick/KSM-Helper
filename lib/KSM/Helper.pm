@@ -7,7 +7,9 @@ use Carp;
 use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
-use POSIX ();
+use POSIX ":sys_wait_h";
+
+use KSM::Logger qw(:all);
 
 =head1 NAME
 
@@ -20,7 +22,7 @@ Version 0.04
 =cut
 
 our $VERSION = '0.04';
-
+our $reaped_children = {};
 
 =head1 SYNOPSIS
 
@@ -69,6 +71,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
         shell_quote
 	with_cwd
 	with_locked_file
+	with_temp
 	with_timeout
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
@@ -383,6 +386,26 @@ sub with_locked_file {
     $result;
 }
 
+=head2 with_temp
+
+Executes the specified function with a temporary file, cleaning it up
+upon completion of function.
+
+=cut
+
+sub with_temp {
+    my ($function) = @_;
+    if(ref($function) ne 'CODE') {
+    	croak("first argument to with_temp ought to be a function");
+    }
+    chomp(my $temp = `mktemp`);
+    my $result = eval {&{$function}($temp)};
+    my $status = $@;
+    unlink($temp) if -e $temp;
+    if($status) {croak $status}
+    $result;
+}
+
 =head2 with_timeout
 
 Executes the specified function, and terminate it early if the
@@ -400,6 +423,111 @@ sub with_timeout {
     alarm 0;
     $result;
 }
+
+########################################
+# in support of with_timeout_spawn_child
+
+=head2 REAPER
+
+Acts as the process' handler for SIGCHLD signals to prevent zombie
+processes by collecting child exit status information when a child
+process terminates.
+
+=cut
+
+sub REAPER {
+    my ($pid,$status);
+    # If a second child dies while in the signal handler caused by the
+    # first death, we won't get another signal. So must loop here else
+    # we will leave the unreaped child as a zombie. And the next time
+    # two children die we get another zombie. And so on.
+    while (($pid = waitpid(-1,WNOHANG)) > 0) {
+	$status = $?;
+	$reaped_children->{$pid} = {
+	    ended => POSIX::strftime("%s", gmtime),
+	    status => $status,
+	};
+    }
+    $SIG{CHLD} = \&REAPER;  # still loathe SysV
+}
+
+=head2 activate_reaper
+
+Sets the SIGCHLD handler to be the REAPER function.
+
+=cut
+
+sub activate_reaper {
+    $SIG{CHLD} = \&REAPER;
+}
+
+=head2 collect_child_stats
+
+Collect stats from terminated child process.
+
+=cut
+
+sub collect_child_stats {
+    my ($child, $reaped_child) = @_;
+
+    $child->{status} = $reaped_child->{status};
+    $child->{ended} = $reaped_child->{ended};
+    $child->{duration} = ($child->{ended} - $child->{started});
+    $child;
+}
+
+=head2 log_child_termination
+
+Logs the termination of a child process.
+
+=cut
+
+sub log_child_termination {
+    my ($child) = @_;
+
+    croak("invalid child") unless defined($child);
+    croak("invalid child") unless ref($child) eq 'HASH';
+    croak("invalid child pid") unless defined($child->{pid});
+    croak sprintf("invalid child duration for %d", $child->{pid}) unless defined($child->{duration});
+    croak sprintf("invalid child name for %d", $child->{pid}) unless defined($child->{name});
+    croak sprintf("invalid child status for %d", $child->{pid}) unless defined($child->{status});
+
+    my $child_status = $child->{status};
+    if($child_status) {
+	if($child_status & 127) {
+	    warning('child %d (%s) received signal %d and terminated status code %d',
+		    $child->{pid}, $child->{name},
+		    $child_status & 127, $child_status >> 8);
+	} else {
+	    warning('child %d (%s) terminated status code %d',
+		    $child->{pid}, $child->{name},
+		    $child_status >> 8);
+	}
+    } else {
+	info('child %d (%s) terminated status code 0',
+	     $child->{pid}, $child->{name});
+    }
+    $child;
+}	
+
+# TODO: consider displaying human friendly signal names for 1-15:
+
+#  1) SIGHUP	 2) SIGINT	 3) SIGQUIT	 4) SIGILL
+#  5) SIGTRAP	 6) SIGABRT	 7) SIGBUS	 8) SIGFPE
+#  9) SIGKILL	10) SIGUSR1	11) SIGSEGV	12) SIGUSR2
+# 13) SIGPIPE	14) SIGALRM	15) SIGTERM	16) SIGSTKFLT
+# 17) SIGCHLD	18) SIGCONT	19) SIGSTOP	20) SIGTSTP
+# 21) SIGTTIN	22) SIGTTOU	23) SIGURG	24) SIGXCPU
+# 25) SIGXFSZ	26) SIGVTALRM	27) SIGPROF	28) SIGWINCH
+# 29) SIGIO	30) SIGPWR	31) SIGSYS	34) SIGRTMIN
+# 35) SIGRTMIN+1	36) SIGRTMIN+2	37) SIGRTMIN+3	38) SIGRTMIN+4
+# 39) SIGRTMIN+5	40) SIGRTMIN+6	41) SIGRTMIN+7	42) SIGRTMIN+8
+# 43) SIGRTMIN+9	44) SIGRTMIN+10	45) SIGRTMIN+11	46) SIGRTMIN+12
+# 47) SIGRTMIN+13	48) SIGRTMIN+14	49) SIGRTMIN+15	50) SIGRTMAX-14
+# 51) SIGRTMAX-13	52) SIGRTMAX-12	53) SIGRTMAX-11	54) SIGRTMAX-10
+# 55) SIGRTMAX-9	56) SIGRTMAX-8	57) SIGRTMAX-7	58) SIGRTMAX-6
+# 59) SIGRTMAX-5	60) SIGRTMAX-4	61) SIGRTMAX-3	62) SIGRTMAX-2
+# 63) SIGRTMAX-1	64) SIGRTMAX	
 
 =head1 AUTHOR
 
