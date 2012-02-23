@@ -86,3 +86,14 @@ sub test_equals_compares_references_of_code : Tests {
     is(equals(sub { 2 }, sub { 2 }), 1, 'should be 1 when equals(sub { 2 }, sub { 2 }');
     is(equals(sub { 3 }, sub { 4 }), 0, 'should be 0 when equals(sub { 3 }, sub { 4 }');
 }
+
+sub test_equals_compares_arrays_of_mixed_types : Tests {
+    my $a = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
+    my $b = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
+    my $c = {"a" => ["q", {"b" => [2, 1]}], "c" => "bar"};
+    my $d = {"a" => ["qr", {"b" => [0, 1]}], "c" => "bar"};
+
+    is(equals($a, $b), 1, 'should be 1 when equals($a, $b)');
+    is(equals($a, $c), 0, 'should be 0 when equals($a, $c)');
+    is(equals($a, $d), 0, 'should be 0 when equals($a, $d)');
+}

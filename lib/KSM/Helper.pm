@@ -23,6 +23,7 @@ Version 0.04
 
 our $VERSION = '0.04';
 our $reaped_children = {};
+our $respawn = 1;
 
 =head1 SYNOPSIS
 
@@ -73,6 +74,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_locked_file
 	with_temp
 	with_timeout
+	with_timeout_spawn_child
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 
@@ -427,6 +429,89 @@ sub with_timeout {
 ########################################
 # in support of with_timeout_spawn_child
 
+=head2 with_timeout_spawn_child
+
+Spawns a child and executes the specified function, optionally with a
+timeout.
+
+=cut
+
+sub with_timeout_spawn_child {
+    my ($child) = @_;
+
+    # croak if required arguments missing or invalid
+    if(!defined($child) || (ref($child) ne 'HASH')) {
+	croak("child should be reference to a hash\n");
+    } elsif(!defined($child->{name}) || ref($child->{name}) ne '') {
+	croak("child name should be string\n");
+    } elsif(!defined($child->{function}) || ref($child->{function}) ne 'CODE') {
+    	croak("child function should be a function\n");
+    } elsif(defined($child->{args}) && ref($child->{args}) ne 'ARRAY') {
+    	croak("child args should be reference to array\n");
+    }
+
+    my $result = eval {
+	local $SIG{CHLD} = \&REAPER;
+	foreach my $signal (qw(INT TERM)) {
+	    local $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+	}
+	if(my $pid = fork) {
+	    setup_signal_handlers();
+	    $child->{pid} = $pid;
+	    $child->{started} = POSIX::strftime("%s", gmtime);
+	    info('spawned child %d (%s)%s', $pid, $child->{name},
+		 (defined($child->{timeout}) 
+		  ? sprintf(" with %d second timeout", $child->{timeout})
+		  : ""));
+	    while(!defined($reaped_children->{$pid})) {
+		my $slept = (defined($child->{timeout}) ? sleep $child->{timeout} : sleep);
+		debug("parent slept for %g seconds", $slept);
+		if(!defined($reaped_children->{$pid})) {
+		    timeout_child($child);
+		}
+	    }
+	    # TODO: determine how to handle non-zero exit of child (die or
+	    # simply return child hash with status?)
+	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
+	    if(!$respawn) {
+		info("all children terminated: exiting.");
+		exit;
+	    }
+	    $child;
+	} elsif(defined($pid)) {
+	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
+	    $0 = $child->{name}; # attempt to set name visible by ps(1)
+	    eval { &{$child->{function}}(@{$child->{args}}) };
+	    if($@) { 
+		my $epitaph = sprintf("error while invoking child function (%s): %s", $child->{name}, $@);
+		error($epitaph);
+		# must exit with error here because caller may have
+		# eval'ed fn application and we don't want 2 procs
+		# CONSIDER: POSIX::_exit(1);
+		# CONSIDER: exec '/bin/false';
+		exit 1;
+	    } else {
+		exit;
+	    }
+	} else {
+	    die sprintf("unable to fork: %s", $!);
+	}
+    };
+    $result;
+}
+
+=head2
+
+Initializes INT and TERM signal handlers
+
+=cut
+
+sub setup_signal_handlers {
+    foreach my $signal (qw(INT TERM)) {
+	$SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+    }
+}
+
 =head2 REAPER
 
 Acts as the process' handler for SIGCHLD signals to prevent zombie
@@ -459,6 +544,22 @@ Sets the SIGCHLD handler to be the REAPER function.
 
 sub activate_reaper {
     $SIG{CHLD} = \&REAPER;
+}
+
+=head2 timeout_child
+
+Log and send child process the TERM signal.
+
+=cut
+
+sub timeout_child {
+    my ($child) = @_;
+    info("timeout: sending child %d (%s) the TERM signal%s",
+	 $child->{pid}, $child->{name},
+	 (defined($child->{timeout}) 
+	  ? sprintf(" after %s seconds", $child->{timeout}) 
+	  : ''));
+    kill('TERM', $child->{pid});
 }
 
 =head2 collect_child_stats
