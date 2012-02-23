@@ -15,11 +15,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 
 =head1 SYNOPSIS
@@ -59,9 +59,10 @@ be included by importing the :all tag.  For example:
 
 use Exporter qw(import);
 our %EXPORT_TAGS = ( 'all' => [qw(
-        all
-        any
+	all
+	any
 	change_account
+	directory_contents
 	ensure_directories_exist
         equals
         find
@@ -231,6 +232,32 @@ sub find {
 	}
     }
     undef;
+}
+
+=head2 directory_contents
+
+Returns reference to array of strings, each string representing a file
+system object inside directory argument.  Includes dot files, but
+omits '.' and '..' from its response.
+
+Croaks when directory argument is not a directory.
+
+=cut
+
+sub directory_contents {
+    my ($dir) = @_;
+    $dir ||= '.';
+    if(! -d $dir) {
+	croak sprintf("invalid directory: %s", $dir);
+    } else {
+	with_cwd($dir, 
+		 sub {
+		     [map { sprintf("%s/%s", $dir, $_) }
+		      (glob(sprintf("*", $dir)),
+		       grep(!/^\.{1,2}$/,
+			    glob(sprintf(".*", $dir))))];
+		 });
+    }
 }
 
 =head2 ensure_directories_exist
