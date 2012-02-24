@@ -103,12 +103,34 @@ with_captured_log(
     });
 
 ########################################
+
+sub ensure_child_return_sanity {
+    my ($child) = @_;
+
+    isnt($child->{name}, undef, "should keep its name");
+    ok((ref($child->{list}) eq 'ARRAY'
+	|| ref($child->{function}) eq 'CODE'),
+       "should have either list or function");
+
+    isnt($child->{pid}, undef, "should have pid");
+    isnt($child->{status}, undef, "should have status");
+    isnt($child->{started}, undef, "should have start time");
+    isnt($child->{ended}, undef, "should have end time");
+    isnt($child->{duration}, undef, "should have duration time");
+
+    ok(POSIX::strftime("%s", gmtime) >= $child->{started}, "should have start time");
+    ok(POSIX::strftime("%s", gmtime) >= $child->{ended}, "should have end time");
+    ok(POSIX::strftime("%s", gmtime) >= $child->{duration}, "should have duration time");
+    ok($child->{duration} >= 0, "duration should be numerical");
+}
+
+########################################
 # croaks and logs if unable to exec program
 
 $log = with_captured_log(
     sub {
 	my $name = 'invalid-tester';
-	my $list = ['not-really-an-executable'];
+	my $list = ['test-program-which-does-not-exist'];
 	my $child = with_timeout_spawn_child({name => $name, list => $list});
 	# The child process will attempt to exec and die.  parent will
 	# only know by fetching the status code; the child die will
@@ -117,7 +139,7 @@ $log = with_captured_log(
 	isnt($child->{status}, 0, "should have failed status");
     });
 like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
-like($log, qr/ERROR: unable to exec \(invalid-tester\): \(not-really-an-executable\): No such file or directory/);
+like($log, qr/ERROR: unable to exec \(invalid-tester\): \(test-program-which-does-not-exist\): No such file or directory/);
 like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
 
 ########################################
@@ -184,26 +206,51 @@ like($log, qr/INFO: timeout: sending child \d+ \(timeout-tester\) the TERM signa
 like($log, qr/WARNING: child \d+ \(timeout-tester\) received signal 15 and terminated status code 0/);
 
 ########################################
+# logs and detects result of successful function
+
+$log = with_captured_log(
+    sub {
+	my $name = 'okay-function-tester';
+	my $function = sub { 1 };
+	my $child = with_timeout_spawn_child({name => $name, function => $function, timeout => 10});
+	ensure_child_return_sanity($child);
+	is($child->{status}, 0, "should have successful status");
+	ok($child->{duration} <= 1, "duration should be correct");
+    });
+like($log, qr/INFO: spawned child \d+ \(okay-function-tester\)/);
+like($log, qr/INFO: child \d+ \(okay-function-tester\) terminated status code 0/);
 
 ########################################
+# logs and detects result of unsuccessful function
 
-sub ensure_child_return_sanity {
-    my ($child) = @_;
+$log = with_captured_log(
+    sub {
+	my $name = 'fail-function-tester';
+	my $function = sub { exit 1 };
+	my $child = with_timeout_spawn_child({name => $name, function => $function, timeout => 10});
+	ensure_child_return_sanity($child);
+	isnt($child->{status}, 0, "should have unsuccessful status");
+	ok($child->{duration} <= 1, "duration should be correct");
+    });
+like($log, qr/INFO: spawned child \d+ \(fail-function-tester\)/);
+like($log, qr/WARNING: child \d+ \(fail-function-tester\) terminated status code 1/);
 
-    isnt($child->{name}, undef, "should keep its name");
-    is(ref($child->{list}), 'ARRAY', "should keep its list");
+########################################
+# logs and detects result of dieing function
 
-    isnt($child->{pid}, undef, "should have pid");
-    isnt($child->{status}, undef, "should have status");
-    isnt($child->{started}, undef, "should have start time");
-    isnt($child->{ended}, undef, "should have end time");
-    isnt($child->{duration}, undef, "should have duration time");
+$log = with_captured_log(
+    sub {
+	my $name = 'die-function-tester';
+	my $function = sub { die("a miserable death") };
+	my $child = with_timeout_spawn_child({name => $name, function => $function, timeout => 10});
+	ensure_child_return_sanity($child);
+	isnt($child->{status}, 0, "should have unsuccessful status");
+	ok($child->{duration} <= 1, "duration should be correct");
+    });
+like($log, qr/INFO: spawned child \d+ \(die-function-tester\)/);
+like($log, qr/WARNING: child \d+ \(die-function-tester\) terminated status code \d+/);
 
-    ok(POSIX::strftime("%s", gmtime) >= $child->{started}, "should have start time");
-    ok(POSIX::strftime("%s", gmtime) >= $child->{ended}, "should have end time");
-    ok(POSIX::strftime("%s", gmtime) >= $child->{duration}, "should have duration time");
-    ok($child->{duration} >= 0, "duration should be numerical");
-}
+########################################
 
 sub run_signal_test {
     my ($signal) = @_;

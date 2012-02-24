@@ -17,11 +17,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.07
+Version 0.08
 
 =cut
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 our $reaped_children = {};
 our $exit_requested;
 
@@ -45,9 +45,10 @@ Perhaps a little code snippet.
                      });
     ...
 
-    with_timeout("timeout while calculating prime numbers",
-                 60,
-                 sub {
+    with_timeout_spawn_child({
+        name => "timeout while calculating prime numbers",
+        timeout => 60,
+        function => sub {
                      # what is the 1,000,000th prime number?
                  });
 
@@ -83,9 +84,8 @@ our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 
 =head2 all
 
-Returns 1 if all elements in array satisfy test predicate.
-
-Returns 0 if any element failed the predicate.
+Returns 1 if all elements in array satisfy test predicate, 0
+otherwise.
 
 The test predicate function ought to take one value, the element to
 test.
@@ -109,9 +109,8 @@ sub all {
 
 =head2 any
 
-Returns 1 if any elements in array satisfy test predicate.
-
-Returns 0 if all element failed the predicate.
+Returns 1 if any elements in array satisfy test predicate, 0
+otherwise.
 
 The test predicate function ought to take one value, the element to
 test.
@@ -135,7 +134,8 @@ sub any {
 
 =head2 equals
 
-Returns 1 value if first element equals the second element.
+Returns 1 value if first element equals the second element, 0
+otherwise.
 
 Attempts to perform a deep comparison by recursively calling itself.
 This means, if your data structure contains a reference to itself, it
@@ -224,9 +224,7 @@ sub file_contents {
 =head2 find
 
 Return the first element in the list for which the test predicate
-returns a truthy value.
-
-Returns undef when no element passes.
+returns a truthy value.  Returns undef when no element passes.
 
 The test predicate function ought to take two values, the first is the
 element to find, and the second is the element in the list being
@@ -453,7 +451,7 @@ sub with_timeout_spawn_child {
 	croak("nothing to execute");
     } elsif(!defined($child->{name}) || !$child->{name}) {
 	croak("nothing to execute: missing name");
-    } elsif(ref($child->{list}) ne 'ARRAY') {
+    } elsif(ref($child->{list}) ne 'ARRAY' && ref($child->{function}) ne 'CODE') {
 	croak("nothing to execute: missing list");
     }
 
@@ -481,9 +479,6 @@ sub with_timeout_spawn_child {
 			     ? sleep($child->{ended} - $child->{started})
 			     : sleep);
 		debug("parent slept for %d seconds", $slept);
-		# at this point, I don't know what signal arrived, but
-		# need to terminate child for either INT, TERM, or
-		# alarm.
 		if(!defined($reaped_children->{$pid})) {
 		    if($exit_requested) {
 			info("sending child %d (%s) the TERM signal", $child->{pid}, $child->{name});
@@ -493,22 +488,30 @@ sub with_timeout_spawn_child {
 		    }
 		}
 	    }
-	    # TODO: determine how to handle non-zero exit of child (die or
-	    # simply return child hash with status?)
 	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
 	    if($exit_requested) {
 		info("all children terminated: exiting.");
 		exit;
 	    }
+	    # TODO: determine how to handle non-zero exit of child (die or
+	    # simply return child hash with status?)
 	    $child;
 	} elsif(defined($pid)) {
 	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
-	    # $0 = $child->{name};
-	    # ??? Redirect STDOUT and STDERR to pipe monitored by parent?
-	    if(!exec @{$child->{list}}) {
-		error("unable to exec (%s): (%s): %s", 
-		      $child->{name}, $child->{list}->[0], $!);
-		exit 1;
+	    if($child->{function}) {
+		$0 = $child->{name};
+		eval {&{$child->{function}}()};
+		if($@) {
+		    error("%s", $@);
+		    exit -1;
+		}
+		exit;
+	    } elsif($child->{list}) {
+		if(!exec @{$child->{list}}) {
+		    error("unable to exec (%s): (%s): %s", 
+			  $child->{name}, $child->{list}->[0], $!);
+		    exit 1;
+		}
 	    }
 	} else {
 	    die error("unable to fork: %s", $!);
@@ -516,73 +519,6 @@ sub with_timeout_spawn_child {
     };
     $result;
 }
-
-# UNTOUCHED:
-
-# sub with_timeout_spawn_child {
-#     my ($child) = @_;
-
-#     # croak if required arguments missing or invalid
-#     if(!defined($child) || (ref($child) ne 'HASH')) {
-# 	croak("child should be reference to a hash\n");
-#     } elsif(!defined($child->{name}) || ref($child->{name}) ne '') {
-# 	croak("child name should be string\n");
-#     } elsif(!defined($child->{function}) || ref($child->{function}) ne 'CODE') {
-#     	croak("child function should be a function\n");
-#     } elsif(defined($child->{args}) && ref($child->{args}) ne 'ARRAY') {
-#     	croak("child args should be reference to array\n");
-#     }
-
-#     # ??? Does this corrupt signal handler from caller? neither using
-#     # local nor saving and restoring works for this.
-#     $SIG{CHLD} = \&REAPER;
-
-#     my $result = eval {
-# 	foreach my $signal (qw(INT TERM)) {
-# 	    $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
-# 	}
-
-# 	if(my $pid = fork) {
-# 	    $child->{pid} = $pid;
-# 	    $child->{started} = POSIX::strftime("%s", gmtime);
-# 	    info('spawned child %d (%s)%s', $pid, $child->{name},
-# 		 (defined($child->{timeout}) 
-# 		  ? sprintf(" with %d second timeout", $child->{timeout})
-# 		  : ""));
-# 	    while(!defined($reaped_children->{$pid})) {
-# 		my $slept = (defined($child->{timeout}) ? sleep $child->{timeout} : sleep);
-# 		debug("parent slept for %g seconds", $slept);
-# 		if(!defined($reaped_children->{$pid})) {
-# 		    timeout_child($child);
-# 		}
-# 	    }
-# 	    # TODO: determine how to handle non-zero exit of child (die or
-# 	    # simply return child hash with status?)
-# 	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
-# 	    if(!$respawn) {
-# 		info("all children terminated: exiting.");
-# 		exit;
-# 	    }
-# 	    $child;
-# 	} elsif(defined($pid)) {
-# 	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
-# 	    $0 = $child->{name}; # attempt to set name visible by ps(1)
-# 	    eval { &{$child->{function}}(@{$child->{args}}) };
-# 	    if($@) { 
-# 		my $epitaph = sprintf("error while invoking child function (%s): %s", $child->{name}, $@);
-# 		error($epitaph);
-# 		# must exit with error here because caller may have
-# 		# eval'ed fn application and we don't want 2 procs
-# 		exit 1;
-# 	    } else {
-# 		exit;
-# 	    }
-# 	} else {
-# 	    die sprintf("unable to fork: %s", $!);
-# 	}
-#     };
-#     $result;
-# }
 
 =head2 REAPER
 
