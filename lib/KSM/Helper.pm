@@ -17,11 +17,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.05
+Version 0.06
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 our $reaped_children = {};
 our $respawn = 1;
 
@@ -68,6 +68,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	directory_contents
 	ensure_directories_exist
         equals
+        file_contents
         find
         shell_quote
 	with_cwd
@@ -205,6 +206,19 @@ sub equals {
     } else {
 	return 1;
     }
+}
+
+=head2 file_contents
+
+Returns string containing file contents.
+
+=cut
+
+sub file_contents {
+    my ($filename) = @_;
+    local $/;
+    open(FH, '<', $filename) or croak sprintf("unable to open file %s: %s", $filename, $!);
+    <FH>;
 }
 
 =head2 find
@@ -426,9 +440,6 @@ sub with_timeout {
     $result;
 }
 
-########################################
-# in support of with_timeout_spawn_child
-
 =head2 with_timeout_spawn_child
 
 Spawns a child and executes the specified function, optionally with a
@@ -450,12 +461,16 @@ sub with_timeout_spawn_child {
     	croak("child args should be reference to array\n");
     }
 
+    $SIG{CHLD} = \&REAPER;	# ??? Does this corrupt signal handler
+				# from caller? neither using local nor
+				# saving and restoring works for this.
+
     my $result = eval {
+	foreach my $signal (qw(INT TERM)) {
+	    $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+	}
+
 	if(my $pid = fork) {
-	    local $SIG{CHLD} = \&REAPER;
-	    foreach my $signal (qw(INT TERM)) {
-		$SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
-	    }
 	    $child->{pid} = $pid;
 	    $child->{started} = POSIX::strftime("%s", gmtime);
 	    info('spawned child %d (%s)%s', $pid, $child->{name},
@@ -486,8 +501,6 @@ sub with_timeout_spawn_child {
 		error($epitaph);
 		# must exit with error here because caller may have
 		# eval'ed fn application and we don't want 2 procs
-		# CONSIDER: POSIX::_exit(1);
-		# CONSIDER: exec '/bin/false';
 		exit 1;
 	    } else {
 		exit;
@@ -521,16 +534,6 @@ sub REAPER {
 	};
     }
     $SIG{CHLD} = \&REAPER;  # still loathe SysV
-}
-
-=head2 activate_reaper
-
-Sets the SIGCHLD handler to be the REAPER function.
-
-=cut
-
-sub activate_reaper {
-    $SIG{CHLD} = \&REAPER;
 }
 
 =head2 timeout_child
