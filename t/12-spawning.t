@@ -19,6 +19,20 @@ sub is_pid_still_alive {
     kill(0, $pid);
 }
 
+sub is_command_line_running {
+    my ($command_line) = @_;
+    $command_line = shell_quote($command_line);
+    my $result = `pgrep -f $command_line`;
+    ($result =~ /\d+/ ? 1 : 0);
+}
+
+sub test_is_command_line_running {
+    ok(is_command_line_running(__FILE__));
+    ok(!is_command_line_running("foobarbaz"));
+}
+
+########################################
+
 sub file_contents {
     my ($name) = @_;
     local $/;
@@ -260,52 +274,59 @@ sub test_with_timeout_spawn_times_out_child {
     like($logs, qr/WARNING: child \d+ \(foo\) received signal 15 and terminated status code 0/);
 }
 
-sub test_with_timeout_spawn_relays_int_and_term_signals_to_child {
-    my ($child,$logs);
+########################################
 
-    foreach my $signal (qw(TERM INT)) {
-	my $handler = sub { info("pid %d received %s signal", $$, $signal) ; exit };
-	local $SIG{$signal} = $handler;
+sub run_signal_test {
+    my ($signal) = @_;
 
-	$logs = with_captured_log(
-	    sub {
-		if(my $pid = fork) {
-		    diag sprintf("testing %s signal handling", $signal);
+    my $handler = sub { info("pid %d received %s signal", $$, $signal) ; exit };
+    local $SIG{$signal} = $handler;
+
+    my $child = {name => "${signal}-tester", function => sub {sleep 60}};
+    my $recursive = find($signal, ['INT','TERM'], \&equals);
+    my $logs = with_captured_log(
+	sub {
+	    if(is_command_line_running($child->{name})) {
+		fail sprintf("should not see grandchild in pgrep output: %s", $child->{name});
+	    }
+	    if(my $pid = fork) {
+		diag sprintf("testing %s%s signal handling", ($recursive ? "recursive " : ""), $signal);
+		sleep 1;
+		ok(is_command_line_running($child->{name}), sprintf("should see grandchild in pgrep output: %s", $child->{name}));
+		kill($signal, $pid);
+		sleep 1;
+		ok(!is_pid_still_alive($pid), sprintf("pid should be gone: %d", $pid));
+		if(!$recursive) {
+		    ok(is_command_line_running($child->{name}), sprintf("should see grandchild in pgrep output: %s", $child->{name}));
+		    system("pkill -f " . shell_quote("${signal}-tester"));
 		    sleep 1;
-		    kill($signal, $pid);
-		    sleep 1;
-
-		    # ensure child gone
-		    ok(!is_pid_still_alive($pid), sprintf("pid should be gone: %d", $pid));
-
-		    # ensure grandchild gone
-		    chomp(my $results = `pgrep -lf foobarbaz`);
-		    unlike($results, qr/\d+ foobarbaz/, "should not see grandchild in pgrep output");
-		} elsif(defined($pid)) {
-		    $child = with_timeout_spawn_child({name => 'foobarbaz',
-						       function => sub { sleep 30 }});
-		    fail("should not be here");
-		    exit;
-		} else {
-		    fail sprintf("unable to fork: %s", $!);
 		}
-	    });
+		ok(!is_command_line_running($child->{name}), sprintf("should not see grandchild in pgrep output: %s", $child->{name}));
+	    } elsif(defined($pid)) {
+		with_timeout_spawn_child($child);
+		fail("should not be here");
+		exit;
+	    } else {
+		fail sprintf("unable to fork: %s", $!);
+	    }
+	});
 
-		# FIXME: error if client code was accepting other
-		# signals: don't want to term child if USR1 was
-		# received and handled...
-		# CONSIDER: using $respawn as flag to determin
-
-	is_deeply($SIG{$signal}, $handler, sprintf("should have restored %s signal handler", $signal));
-	unlike($logs, qr/unable to fork/);
-	like($logs, qr/INFO: spawned child \d+ \(foobarbaz\)/);
+    is_deeply($SIG{$signal}, $handler, sprintf("should have restored %s signal handler", $signal));
+    unlike($logs, qr/unable to fork/);
+    like($logs, qr/INFO: spawned child \d+ \(${signal}-tester\)/);
+    if($recursive) {
 	like($logs, qr/INFO: received $signal signal/);
-	like($logs, qr/INFO: timeout: sending child \d+ \(foobarbaz\) the TERM signal/);
-	like($logs, qr/WARNING: child \d+ \(foobarbaz\) received signal 15 and terminated status code 0/);
+	like($logs, qr/INFO: timeout: sending child \d+ \(${signal}-tester\) the TERM signal/);
+	like($logs, qr/WARNING: child \d+ \(${signal}-tester\) received signal 15 and terminated status code 0/);
 	like($logs, qr/INFO: all children terminated: exiting/);
-	unlike($logs, qr/should not be here/);
-	unlike($logs, qr/WARNING: Use of uninitialized value/);
+    } else {
+	like($logs, qr/INFO: pid \d+ received $signal signal/);
+	unlike($logs, qr/INFO: timeout: sending child \d+ \(${signal}-tester\) the TERM signal/);
+	unlike($logs, qr/WARNING: child \d+ \(${signal}-tester\) received signal 15 and terminated status code 0/);
+	unlike($logs, qr/INFO: all children terminated: exiting/);
     }
+    unlike($logs, qr/should not be here/);
+    unlike($logs, qr/WARNING: Use of uninitialized value/);
 }
 
 ########################################
@@ -324,5 +345,9 @@ test_with_timeout_spawn_child_validates_child_hash();
 test_with_timeout_spawn_child_decorates_child_hash();
 test_with_timeout_spawn_child_logs();
 test_with_timeout_spawn_times_out_child();
-test_with_timeout_spawn_relays_int_and_term_signals_to_child();
+test_is_command_line_running();
+run_signal_test('TERM');
+run_signal_test('INT');
+run_signal_test('USR1');
+run_signal_test('USR2');
 done_testing();

@@ -32,3 +32,7 @@ sub test_shell_quote_empty_string : Tests {
 sub test_shell_quote_special_character : Tests {
     is(shell_quote('!@#$%^&*(),<>?'), '\!\@\#\$\%\^\&\*\(\)\,\<\>\?');
 }
+
+sub test_shell_quote_command : Tests {
+    is(shell_quote('emacs --daemon'), 'emacs\ --daemon');
+}
