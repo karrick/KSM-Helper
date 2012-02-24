@@ -366,11 +366,11 @@ sub with_cwd {
         $change_back = 1;
     }
     my $result = eval { &{$function}(@_) };
-    my $caught_error = $@;
+    my $status = $@;
     if($change_back) {
         chdir($old_dir) or die($!);
     }
-    die($caught_error) if $caught_error;
+    die($status) if $status;
     $result;
 }
 
@@ -394,11 +394,9 @@ sub with_locked_file {
     open(FILE, '<', $file) or croak sprintf('unable to open: [%s]: %s',$file, $!);
     flock(FILE, LOCK_EX | LOCK_NB) or croak sprintf('unable to lock: [%s]: %s',$file, $!);
     my $result = eval { &{$function}($file) };
-    if($@) {
-        close(FILE);
-        die($@);
-    }
+    my $status = $@;
     close(FILE);
+    die($status) if $status;
     $result;
 }
 
