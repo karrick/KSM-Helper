@@ -23,7 +23,7 @@ Version 0.06
 
 our $VERSION = '0.06';
 our $reaped_children = {};
-our $respawn = 1;
+our $exit_requested;
 
 =head1 SYNOPSIS
 
@@ -449,66 +449,140 @@ sub with_timeout_spawn_child {
     my ($child) = @_;
 
     # croak if required arguments missing or invalid
-    if(!defined($child) || (ref($child) ne 'HASH')) {
-	croak("child should be reference to a hash\n");
-    } elsif(!defined($child->{name}) || ref($child->{name}) ne '') {
-	croak("child name should be string\n");
-    } elsif(!defined($child->{function}) || ref($child->{function}) ne 'CODE') {
-    	croak("child function should be a function\n");
-    } elsif(defined($child->{args}) && ref($child->{args}) ne 'ARRAY') {
-    	croak("child args should be reference to array\n");
+    if(ref($child) ne 'HASH') {
+	croak("nothing to execute");
+    } elsif(!defined($child->{name}) || !$child->{name}) {
+	croak("nothing to execute: missing name");
+    } elsif(ref($child->{list}) ne 'ARRAY') {
+	croak("nothing to execute: missing list");
     }
 
-    $SIG{CHLD} = \&REAPER;	# ??? Does this corrupt signal handler
-				# from caller? neither using local nor
-				# saving and restoring works for this.
+    # ??? Does this corrupt signal handler from caller? neither using
+    # local nor saving and restoring works for this.
+    $SIG{CHLD} = \&REAPER;
 
     my $result = eval {
 	foreach my $signal (qw(INT TERM)) {
-	    $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+	    $SIG{$signal} = sub { info("received %s signal; preparing to exit", $signal); $exit_requested = 1 };
 	}
 
 	if(my $pid = fork) {
 	    $child->{pid} = $pid;
 	    $child->{started} = POSIX::strftime("%s", gmtime);
+	    if(defined($child->{timeout})) {
+		$child->{ended} = $child->{started} + $child->{timeout};
+	    }
 	    info('spawned child %d (%s)%s', $pid, $child->{name},
 		 (defined($child->{timeout}) 
 		  ? sprintf(" with %d second timeout", $child->{timeout})
 		  : ""));
 	    while(!defined($reaped_children->{$pid})) {
-		my $slept = (defined($child->{timeout}) ? sleep $child->{timeout} : sleep);
-		debug("parent slept for %g seconds", $slept);
+		my $slept = (defined($child->{timeout})
+			     ? sleep($child->{ended} - $child->{started})
+			     : sleep);
+		debug("parent slept for %d seconds", $slept);
+		# at this point, I don't know what signal arrived, but
+		# need to terminate child for either INT, TERM, or
+		# alarm.
 		if(!defined($reaped_children->{$pid})) {
-		    timeout_child($child);
+		    if($exit_requested) {
+			info("sending child %d (%s) the TERM signal", $child->{pid}, $child->{name});
+			kill('TERM', $child->{pid});
+		    } elsif(defined($child->{ended}) && POSIX::strftime("%s", gmtime) > $child->{ended}) {
+			timeout_child($child);
+		    }
 		}
 	    }
 	    # TODO: determine how to handle non-zero exit of child (die or
 	    # simply return child hash with status?)
 	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
-	    if(!$respawn) {
+	    if($exit_requested) {
 		info("all children terminated: exiting.");
 		exit;
 	    }
 	    $child;
 	} elsif(defined($pid)) {
 	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
-	    $0 = $child->{name}; # attempt to set name visible by ps(1)
-	    eval { &{$child->{function}}(@{$child->{args}}) };
-	    if($@) { 
-		my $epitaph = sprintf("error while invoking child function (%s): %s", $child->{name}, $@);
-		error($epitaph);
-		# must exit with error here because caller may have
-		# eval'ed fn application and we don't want 2 procs
+	    # $0 = $child->{name};
+	    # ??? Redirect STDOUT and STDERR to pipe monitored by parent?
+	    if(!exec @{$child->{list}}) {
+		error("unable to exec (%s): (%s): %s", 
+		      $child->{name}, $child->{list}->[0], $!);
 		exit 1;
-	    } else {
-		exit;
 	    }
 	} else {
-	    die sprintf("unable to fork: %s", $!);
+	    die error("unable to fork: %s", $!);
 	}
     };
     $result;
 }
+
+# UNTOUCHED:
+
+# sub with_timeout_spawn_child {
+#     my ($child) = @_;
+
+#     # croak if required arguments missing or invalid
+#     if(!defined($child) || (ref($child) ne 'HASH')) {
+# 	croak("child should be reference to a hash\n");
+#     } elsif(!defined($child->{name}) || ref($child->{name}) ne '') {
+# 	croak("child name should be string\n");
+#     } elsif(!defined($child->{function}) || ref($child->{function}) ne 'CODE') {
+#     	croak("child function should be a function\n");
+#     } elsif(defined($child->{args}) && ref($child->{args}) ne 'ARRAY') {
+#     	croak("child args should be reference to array\n");
+#     }
+
+#     # ??? Does this corrupt signal handler from caller? neither using
+#     # local nor saving and restoring works for this.
+#     $SIG{CHLD} = \&REAPER;
+
+#     my $result = eval {
+# 	foreach my $signal (qw(INT TERM)) {
+# 	    $SIG{$signal} = sub { info("received %s signal", $signal); $respawn = 0 };
+# 	}
+
+# 	if(my $pid = fork) {
+# 	    $child->{pid} = $pid;
+# 	    $child->{started} = POSIX::strftime("%s", gmtime);
+# 	    info('spawned child %d (%s)%s', $pid, $child->{name},
+# 		 (defined($child->{timeout}) 
+# 		  ? sprintf(" with %d second timeout", $child->{timeout})
+# 		  : ""));
+# 	    while(!defined($reaped_children->{$pid})) {
+# 		my $slept = (defined($child->{timeout}) ? sleep $child->{timeout} : sleep);
+# 		debug("parent slept for %g seconds", $slept);
+# 		if(!defined($reaped_children->{$pid})) {
+# 		    timeout_child($child);
+# 		}
+# 	    }
+# 	    # TODO: determine how to handle non-zero exit of child (die or
+# 	    # simply return child hash with status?)
+# 	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
+# 	    if(!$respawn) {
+# 		info("all children terminated: exiting.");
+# 		exit;
+# 	    }
+# 	    $child;
+# 	} elsif(defined($pid)) {
+# 	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
+# 	    $0 = $child->{name}; # attempt to set name visible by ps(1)
+# 	    eval { &{$child->{function}}(@{$child->{args}}) };
+# 	    if($@) { 
+# 		my $epitaph = sprintf("error while invoking child function (%s): %s", $child->{name}, $@);
+# 		error($epitaph);
+# 		# must exit with error here because caller may have
+# 		# eval'ed fn application and we don't want 2 procs
+# 		exit 1;
+# 	    } else {
+# 		exit;
+# 	    }
+# 	} else {
+# 	    die sprintf("unable to fork: %s", $!);
+# 	}
+#     };
+#     $result;
+# }
 
 =head2 REAPER
 
