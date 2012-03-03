@@ -11,18 +11,9 @@ END { Test::Class->runtests }
 
 ########################################
 
-use KSM::Helper qw(:all);
+use KSM::Helper qw(equals);
 
 ########################################
-# is_numeric
-
-# sub test_is_numeric : Tests {
-#     ok(KSM::Helper::is_numeric(0), "should be true when 0");
-#     # ok(KSM::Helper::is_numeric(-1), "should be true when -1");
-# }
-
-########################################
-# equals
 
 sub test_equals_compares_undef : Tests {
     is(equals, 1);

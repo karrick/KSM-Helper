@@ -8,8 +8,8 @@ use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
 use POSIX ":sys_wait_h";
-
-use KSM::Logger qw(:all);
+use Capture::Tiny 'capture';
+use KSM::Logger ':all';
 
 =head1 NAME
 
@@ -17,13 +17,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.08
+Version 0.10
 
 =cut
 
-our $VERSION = '0.08';
-our $reaped_children = {};
-our $exit_requested;
+our $VERSION = '0.10';
 
 =head1 SYNOPSIS
 
@@ -72,6 +70,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
         file_contents
         find
         shell_quote
+        shex
 	with_cwd
 	with_locked_file
 	with_temp
@@ -79,6 +78,15 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_timeout_spawn_child
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
+
+=head2 CONSTANTS
+
+Various constants required to manage child processes.
+
+=cut
+
+our $reaped_children = {};
+our $exit_requested;
 
 =head1 SUBROUTINES/METHODS
 
@@ -242,7 +250,7 @@ sub find {
     if(!defined($list) || ref($list) ne 'ARRAY') {
     	croak("second argument to find ought to be a list");
     } elsif(!defined($test) || ref($test) ne 'CODE') {
-    	croak("third argument to find ought to be a function\n");
+    	croak("third argument to find ought to be a function");
     } else {
 	foreach (@$list) {
 	    return $_ if(&{$test}($element, $_));
@@ -270,9 +278,8 @@ sub directory_contents {
 	with_cwd($dir, 
 		 sub {
 		     [map { sprintf("%s/%s", $dir, $_) }
-		      (glob(sprintf("*", $dir)),
-		       grep(!/^\.{1,2}$/,
-			    glob(sprintf(".*", $dir))))];
+		      (glob("*"),
+		       grep(!/^\.{1,2}$/, glob(".*")))];
 		 });
     }
 }
@@ -344,31 +351,41 @@ Change to the specified directory, creating it if necessary, and
 execute the specified function.
 
 Even when an error is triggered in your function, the original working
-directory is restored upon function exit.
+directory is restored upon function exit.  If the original working
+directory no longer exists when your function exits, this will croak
+with a suitable message.
 
 =cut
 
 sub with_cwd {
     my ($new_dir,$function) = @_;
+    my ($result,$status);
     my $old_dir = POSIX::getcwd();
-    my $change_back;
-    if(!defined($new_dir) || $new_dir eq '') {
-        croak('empty new_dir call to with_cwd()');
+    if(ref($function) ne 'CODE') {
+	croak("second argument to with_locked_file ought to be a function");
     }
-    if(!$old_dir) {
-        croak sprintf('$old_dir is empty when called with %s', $new_dir);
+    eval {
+    chdir($new_dir) 
+	or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
+    };
+    if($@) {
+	my $status = $@;
+	if($status =~ /No such file or directory/) {
+	    File::Path::mkpath($new_dir);	    
+	    chdir($new_dir) 
+		or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
+	} else {
+	    croak $status;
+	}
     }
-    if($new_dir ne $old_dir) {
-        File::Path::mkpath($new_dir);
-        chdir($new_dir) or die($!);
-        $change_back = 1;
-    }
-    my $result = eval { &{$function}(@_) };
-    my $status = $@;
-    if($change_back) {
-        chdir($old_dir) or die($!);
-    }
-    die($status) if $status;
+    verbose("cwd: [%s]", $new_dir);
+    $result = eval { &{$function}() };
+    $status = $@;
+    chdir($old_dir) 
+	or croak error("unable to return to previous directory [%s]: %s",
+		       $old_dir, $!);
+    verbose("cwd: [%s]", $old_dir);
+    croak($status) if $status;
     $result;
 }
 
@@ -389,12 +406,19 @@ specified file.
 
 sub with_locked_file {
     my ($file,$function) = @_;
-    open(FILE, '<', $file) or croak sprintf('unable to open: [%s]: %s',$file, $!);
-    flock(FILE, LOCK_EX | LOCK_NB) or croak sprintf('unable to lock: [%s]: %s',$file, $!);
-    my $result = eval { &{$function}($file) };
-    my $status = $@;
-    close(FILE);
-    die($status) if $status;
+    my ($result,$status);
+    if(ref($function) ne 'CODE') {
+	croak("second argument to with_locked_file ought to be a function");
+    }
+    verbose("getting exclusive lock: [%s]", $file);
+    open(FILE, '<', $file) or croak error('unable to open: [%s]: %s',$file, $!);
+    flock(FILE, LOCK_EX | LOCK_NB) or croak error('unable to lock: [%s]: %s',$file, $!);
+    verbose("have exclusive lock: [%s]", $file);
+    $result = eval { &{$function}() };
+    $status = $@;
+    close(FILE) or croak error("unable to close: [%s]: %s",$file, $!);
+    verbose("released exclusive lock: [%s]", $file);
+    croak($status) if($status);
     $result;
 }
 
@@ -407,14 +431,15 @@ upon completion of function.
 
 sub with_temp {
     my ($function) = @_;
+    my ($result,$status);
     if(ref($function) ne 'CODE') {
     	croak("first argument to with_temp ought to be a function");
     }
     chomp(my $temp = `mktemp`);
-    my $result = eval {&{$function}($temp)};
-    my $status = $@;
+    $result = eval {&{$function}($temp)};
+    $status = $@;
     unlink($temp) if -e $temp;
-    if($status) {croak $status}
+    croak($status) if($status);
     $result;
 }
 

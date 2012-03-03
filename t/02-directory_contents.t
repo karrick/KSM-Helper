@@ -52,8 +52,8 @@ sub chdir_to_test_data_directory : Tests(setup) {
 
 sub remove_test_artifact_and_return_to_start_directory : Tests(teardown) {
     my ($self) = @_;
-    File::Path::rmtree($self->{destination}) if -d $self->{destination};
     chdir($self->{start_directory});
+    File::Path::rmtree($self->{destination}) if -d $self->{destination};
 }
 
 ########################################
