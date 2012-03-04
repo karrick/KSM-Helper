@@ -3,11 +3,14 @@ package KSM::Helper;
 use utf8;
 use warnings;
 use strict;
+
 use Carp;
 use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
+use File::Temp;
 use POSIX ":sys_wait_h";
+
 use Capture::Tiny 'capture';
 use KSM::Logger ':all';
 
@@ -17,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 0.10
+Version 1.00
 
 =cut
 
-our $VERSION = '0.10';
+our $VERSION = '1.00';
 
 =head1 SYNOPSIS
 
@@ -66,11 +69,10 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	change_account
 	directory_contents
 	ensure_directories_exist
-        equals
-        file_contents
-        find
-        shell_quote
-        shex
+	equals
+	file_contents
+	find
+	shell_quote
 	with_cwd
 	with_locked_file
 	with_temp
@@ -427,6 +429,11 @@ sub with_locked_file {
 Executes the specified function with a temporary file, cleaning it up
 upon completion of function.
 
+Returns both the opened file handle and the file name.  It is
+recommended that software is written to only use the file handle, as
+this prevents some types of race conditions that could be leveraged by
+mischiefous programs.  The file name is also provided.
+
 =cut
 
 sub with_temp {
@@ -435,10 +442,15 @@ sub with_temp {
     if(ref($function) ne 'CODE') {
     	croak("first argument to with_temp ought to be a function");
     }
-    chomp(my $temp = `mktemp`);
-    $result = eval {&{$function}($temp)};
+    my ($fh,$fname) = File::Temp::tempfile();
+    $result = eval {&{$function}($fh,$fname)};
     $status = $@;
-    unlink($temp) if -e $temp;
+    {
+	# localize no warnings
+	no warnings;
+	close($fh) if(tell($fh) != -1);
+    }
+    unlink($fname);
     croak($status) if($status);
     $result;
 }
@@ -633,25 +645,6 @@ sub log_child_termination {
     }
     $child;
 }	
-
-# TODO: consider displaying human friendly signal names for 1-15:
-
-#  1) SIGHUP	 2) SIGINT	 3) SIGQUIT	 4) SIGILL
-#  5) SIGTRAP	 6) SIGABRT	 7) SIGBUS	 8) SIGFPE
-#  9) SIGKILL	10) SIGUSR1	11) SIGSEGV	12) SIGUSR2
-# 13) SIGPIPE	14) SIGALRM	15) SIGTERM	16) SIGSTKFLT
-# 17) SIGCHLD	18) SIGCONT	19) SIGSTOP	20) SIGTSTP
-# 21) SIGTTIN	22) SIGTTOU	23) SIGURG	24) SIGXCPU
-# 25) SIGXFSZ	26) SIGVTALRM	27) SIGPROF	28) SIGWINCH
-# 29) SIGIO	30) SIGPWR	31) SIGSYS	34) SIGRTMIN
-# 35) SIGRTMIN+1	36) SIGRTMIN+2	37) SIGRTMIN+3	38) SIGRTMIN+4
-# 39) SIGRTMIN+5	40) SIGRTMIN+6	41) SIGRTMIN+7	42) SIGRTMIN+8
-# 43) SIGRTMIN+9	44) SIGRTMIN+10	45) SIGRTMIN+11	46) SIGRTMIN+12
-# 47) SIGRTMIN+13	48) SIGRTMIN+14	49) SIGRTMIN+15	50) SIGRTMAX-14
-# 51) SIGRTMAX-13	52) SIGRTMAX-12	53) SIGRTMAX-11	54) SIGRTMAX-10
-# 55) SIGRTMAX-9	56) SIGRTMAX-8	57) SIGRTMAX-7	58) SIGRTMAX-6
-# 59) SIGRTMAX-5	60) SIGRTMAX-4	61) SIGRTMAX-3	62) SIGRTMAX-2
-# 63) SIGRTMAX-1	64) SIGRTMAX	
 
 =head1 AUTHOR
 

@@ -22,21 +22,20 @@ sub with_captured_log {
     my $function = shift;
     # remaining args for function
 
-    with_temp(
-	sub {
-	    my $logfile = shift;
-	    KSM::Logger::initialize({level => KSM::Logger::DEBUG,
-				     filename_template => $logfile,
-				     reformatter => sub {
-					 my ($level,$msg) = @_;
-					 croak("undefined level") if !defined($level);
-					 croak("undefined msg") if !defined($msg);
-					 sprintf("%s: %s", $level, $msg);
-				     }});
-	    eval { &{$function}(@_) };
-	    # diag sprintf("READING LOG FILE: %s", $logfile);
-	    file_contents($logfile);
-	});
+    with_temp(sub {
+	my (undef,$logfile) = @_;
+	KSM::Logger::initialize({level => KSM::Logger::DEBUG,
+				 filename_template => $logfile,
+				 reformatter => sub {
+				     my ($level,$msg) = @_;
+				     croak("undefined level") if !defined($level);
+				     croak("undefined msg") if !defined($msg);
+				     sprintf("%s: %s", $level, $msg);
+				 }});
+	eval { &{$function}(@_) };
+	# diag sprintf("READING LOG FILE: %s", $logfile);
+	file_contents($logfile);
+	      });
 }
 
 ########################################

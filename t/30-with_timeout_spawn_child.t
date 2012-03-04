@@ -51,7 +51,7 @@ sub with_captured_log {
 
     with_temp(
 	sub {
-	    my $logfile = shift;
+	    my (undef,$logfile) = @_;
 	    # remaining args for function
 
 	    # KSM::Logger::level(KSM::Logger::DEBUG);
@@ -63,7 +63,6 @@ sub with_captured_log {
 		sprintf("%s: %s", $level, $msg);
 				     });
 	    eval { &{$function}(@_) };
-	    is($@, '', "should not have reported error");
 	    file_contents($logfile);
 	});
 }
@@ -130,7 +129,7 @@ sub ensure_child_return_sanity {
 $log = with_captured_log(
     sub {
 	my $name = 'invalid-tester';
-	my $list = ['test-program-which-does-not-exist'];
+	my $list = ['exec-should-not-find-this-program'];
 	my $child = with_timeout_spawn_child({name => $name, list => $list});
 	# The child process will attempt to exec and die.  parent will
 	# only know by fetching the status code; the child die will
@@ -139,7 +138,7 @@ $log = with_captured_log(
 	isnt($child->{status}, 0, "should have failed status");
     });
 like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
-like($log, qr/ERROR: unable to exec \(invalid-tester\): \(test-program-which-does-not-exist\): No such file or directory/);
+like($log, qr/ERROR: unable to exec \(invalid-tester\): \(exec-should-not-find-this-program\): No such file or directory/);
 like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
 
 ########################################

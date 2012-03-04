@@ -27,7 +27,7 @@ sub with_captured_log {
 
     with_temp(
 	sub {
-	    my $logfile = shift;
+	    my (undef,$logfile) = @_;
 	    # remaining args for function
 
 	    KSM::Logger::filename_template($logfile);

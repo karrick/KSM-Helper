@@ -3,6 +3,9 @@
 use utf8;
 use strict;
 use warnings;
+use Carp;
+use File::Path;
+use POSIX ();
 
 use Test::More;
 use Test::Class;
@@ -11,11 +14,8 @@ END { Test::Class->runtests }
 
 ########################################
 
-use Carp;
-use File::Path;
-use KSM::Helper qw(:all);
 use KSM::Logger ':all';
-use POSIX ();
+use KSM::Helper ':all';
 
 ########################################
 
@@ -40,7 +40,7 @@ sub with_captured_log {
 
     with_temp(
 	sub {
-	    my $logfile = shift;
+	    my (undef,$logfile) = @_;
 	    KSM::Logger::initialize({level => KSM::Logger::DEBUG,
 				     filename_template => $logfile,
 				     reformatter => sub {

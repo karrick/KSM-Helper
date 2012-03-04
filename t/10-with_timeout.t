@@ -27,18 +27,6 @@ sub cleanup_after_all_tests : Tests(shutdown) {
 
 ########################################
 
-sub test_with_cwd_returns_to_previous_directory_even_when_die : Tests {
-    my $original_directory = POSIX::getcwd();
-
-    eval {
-	with_cwd('t/data/empty', sub { die('death & dieing') });
-    };
-    like($@, qr/^death & dieing/);
-    is(POSIX::getcwd(), $original_directory);
-}
-
-########################################
-
 sub test_with_timeout_returns_the_result_of_the_invoked_function : Tests {
     my $result = eval {
 	with_timeout("unexpected timeout",
@@ -142,5 +130,5 @@ sub test_with_locked_file_dies_if_already_locked : Tests {
 	like($@, qr/^unable to lock/);
     };
     
-    unlink($file) if -e $file;
+    unlink($file);
 }
