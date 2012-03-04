@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -26,9 +27,7 @@ sub cleanup_after_all_tests : Tests(shutdown) {
 ########################################
 
 sub test_ensure_directories_exist_croaks_if_cannot_create : Tests {
-    eval {
-	ensure_directories_exist("/root/foo/bar");
-    };
+    eval {ensure_directories_exist("/root/foo/bar")};
     like($@, qr/Permission/);
 }
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
 use Carp;
-
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -60,7 +60,7 @@ sub test_croaks_if_unable_to_open : Tests {
 
 sub test_croaks_when_second_argument_not_function : Tests {
     eval { with_locked_file(__FILE__, "something not a function") };
-    like($@, qr/ought to be a function/);
+    like($@, qr/ought to be function/);
 }
 
 sub test_logs_actions_when_called_function_succeeds : Tests {

@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -26,5 +27,7 @@ sub test_change_account : Tests {
     is_deeply(KSM::Helper::change_account(['foo'], 'other'), ['sudo','-inu','other','foo'],
 	      "when other");
     # TODO: WHAT HAPPENS IF LOGNAME *IS* ROOT AND SUDO? I THINK CODE
-    # IS CORRECT, BUT NEED TO TEST
+    # IS CORRECT, BUT NEED TO TEST.  I'M DECIDED TO ASSUME MODULE
+    # TESTS ARE *NOT* EXECUTED BY 'root' ACCOUNT, AS THIS WOULD BE
+    # POOR PRACTICE.
 }

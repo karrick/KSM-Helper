@@ -1,18 +1,19 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
 use Carp;
-use File::Path;
-use POSIX ();
-
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
 END { Test::Class->runtests }
 
 ########################################
+
+use File::Path;
+use POSIX;
 
 use KSM::Logger ':all';
 use KSM::Helper ':all';
@@ -35,9 +36,7 @@ sub remove_test_artifact_and_return_to_start_directory : Tests(teardown) {
 # with_captured_log
 
 sub with_captured_log {
-    my $function = shift;
-    # remaining args for function
-
+    my ($function) = @_;
     with_temp(
 	sub {
 	    my (undef,$logfile) = @_;
@@ -50,7 +49,6 @@ sub with_captured_log {
 					 sprintf("%s: %s", $level, $msg);
 				     }});
 	    eval { &{$function}(@_) };
-	    # diag sprintf("READING LOG FILE: %s", $logfile);
 	    file_contents($logfile);
 	});
 }
@@ -64,7 +62,7 @@ sub with_captured_log {
 
 sub test_croaks_when_second_argument_not_function : Tests {
     eval { with_cwd("/tmp", "something not a function") };
-    like($@, qr/ought to be a function/);
+    like($@, qr/ought to be function/);
 }
 
 sub test_croaks_when_cannot_change_to_specified_directory : Tests {

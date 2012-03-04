@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -17,7 +18,7 @@ use KSM::Helper 'with_temp';
 
 sub test_croaks_when_missing_function : Tests {
     eval {with_temp()};
-    like($@, qr/ought to be a function/);
+    like($@, qr|ought to be function|);
 }
 
 sub test_passes_file_handle_and_filename_to_function : Tests {

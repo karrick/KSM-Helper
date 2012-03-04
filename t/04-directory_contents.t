@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -11,8 +12,9 @@ END { Test::Class->runtests }
 
 ########################################
 
-use File::Path ();
-use POSIX ();
+use File::Path;
+use POSIX;
+
 use KSM::Helper qw(:all);
 
 ########################################

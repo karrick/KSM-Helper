@@ -1,9 +1,10 @@
 #!/usr/bin/env perl
 
 use utf8;
+use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
 use Test::Class;
 use base qw(Test::Class);
@@ -18,10 +19,10 @@ use KSM::Helper qw(:all);
 
 sub test_all_croaks_when_no_list : Tests {
     eval { KSM::Helper::all(undef, sub { shift eq shift }) };
-    like($@, qr/\blist\b/, "when list undef");
+    like($@, qr|ought to be array reference|, "when list undef");
 
     eval { KSM::Helper::all('money', sub { shift eq shift }) };
-    like($@, qr/\blist\b/, "when list not ref to array");
+    like($@, qr|ought to be array reference|, "when list not ref to array");
 }
 
 sub test_all_croaks_when_no_function : Tests {
@@ -44,18 +45,18 @@ sub test_all_checks_each_element : Tests {
 
 sub test_any_croaks_when_no_list : Tests {
     eval { KSM::Helper::any(undef, sub { shift eq shift }) };
-    like($@, qr/\blist\b/, "when list undef");
+    like($@, qr|ought to be array reference|, "when list undef");
 
     eval { KSM::Helper::any('money', sub { shift eq shift }) };
-    like($@, qr/\blist\b/, "when list not ref to array");
+    like($@, qr|ought to be array reference|, "when list not ref to array");
 }
 
 sub test_any_croaks_when_no_function : Tests {
     eval { KSM::Helper::any([]) };
-    like($@, qr/\bfunction\b/, "when function undef");
+    like($@, qr|ought to be function|, "when function undef");
 
     eval { KSM::Helper::any(['money'], 'money') };
-    like($@, qr/\bfunction\b/, "when function not sub");
+    like($@, qr|ought to be function|, "when function not sub");
 }
 
 sub test_any_checks_each_element : Tests {

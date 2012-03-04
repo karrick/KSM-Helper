@@ -1,18 +1,18 @@
 package KSM::Helper;
 
 use utf8;
-use warnings;
 use strict;
+use warnings;
 
+use Capture::Tiny qw(capture);
 use Carp;
 use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
-use File::Temp;
-use POSIX ":sys_wait_h";
+use File::Temp ();
+use POSIX qw(:sys_wait_h);
 
-use Capture::Tiny 'capture';
-use KSM::Logger ':all';
+use KSM::Logger qw(:all);
 
 =head1 NAME
 
@@ -20,43 +20,28 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.00
+Version 1.01
 
 =cut
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 =head1 SYNOPSIS
 
 KSM::Helper provides a number of commonly used functions to expedite
 writting your program.
 
-Perhaps a little code snippet.
+All library functions here use references to hashes and arrays instead
+of a hash or array directly.
 
-    use KSM::Helper qw(:all);
-
-    with_cwd("/some/path", sub {
-                             # do something with cwd
-                           });
-    ...
-
-    with_locked_file("/some/file", 
-                     sub {
-                         # do something with that file
-                     });
-    ...
-
-    with_timeout_spawn_child({
-        name => "timeout while calculating prime numbers",
-        timeout => 60,
-        function => sub {
-                     # what is the 1,000,000th prime number?
-                 });
+Code examples below assume the :all export tag is imported by your
+code, see the EXPORT section for an example of how to do this.
 
 =head1 EXPORT
 
-Although nothing is exported by default, the most common functions may
-be included by importing the :all tag.  For example:
+Although no functions are exported by default, the most common
+functions may be imported into your namespace by importing the :all
+tag.  For example:
 
     use KSM::Helper qw(:all);
 
@@ -72,6 +57,8 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	equals
 	file_contents
 	find
+	find_all
+	find_first
 	shell_quote
 	with_cwd
 	with_locked_file
@@ -81,9 +68,9 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 
-=head2 CONSTANTS
+=head2 GLOBALS
 
-Various constants required to manage child processes.
+Various global variables required to manage child processes.
 
 =cut
 
@@ -100,18 +87,19 @@ otherwise.
 The test predicate function ought to take one value, the element to
 test.
 
+    print "all even\n" if(all([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) }));
+
 =cut
 
 sub all {
-    my ($list,$test) = @_;
-
-    if(!defined($list) || ref($list) ne 'ARRAY') {
-    	croak("first argument to find ought to be a list");
-    } elsif(!defined($test) || ref($test) ne 'CODE') {
-    	croak("second argument to find ought to be a function\n");
+    my ($list,$predicate) = @_;
+    if(ref($list) ne 'ARRAY') {
+    	croak("argument ought to be array reference");
+    } elsif(ref($predicate) ne 'CODE') {
+    	croak("argument ought to be function");
     } else {
 	foreach (@$list) {
-	    return 0 if(!&{$test}($_));
+	    return 0 if(!&{$predicate}($_));
 	}
 	return 1;
     }
@@ -125,20 +113,21 @@ otherwise.
 The test predicate function ought to take one value, the element to
 test.
 
+    print "some even\n" if(any([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) }));
+
 =cut
 
 sub any {
-    my ($list,$test) = @_;
-
-    if(!defined($list) || ref($list) ne 'ARRAY') {
-    	croak("first argument to find ought to be a list");
-    } elsif(!defined($test) || ref($test) ne 'CODE') {
-    	croak("second argument to find ought to be a function\n");
+    my ($list,$predicate) = @_;
+    if(ref($list) ne 'ARRAY') {
+    	croak("argument ought to be array reference");
+    } elsif(ref($predicate) ne 'CODE') {
+    	croak("argument ought to be function");
     } else {
-	foreach (@$list) {
-	    return 1 if(&{$test}($_));
-	}
-	return 0;
+    	foreach (@$list) {
+    	    return 1 if(&{$predicate}($_));
+    	}
+    	return 0;
     }
 }
 
@@ -149,13 +138,20 @@ otherwise.
 
 Attempts to perform a deep comparison by recursively calling itself.
 This means, if your data structure contains a reference to itself, it
-will pop your perl stack.
+will pop your Perl stack.
+
+    my $a = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
+    my $b = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
+    my $c = {"a" => ["q", {"b" => [2, 1]}], "c" => "bar"};
+    my $d = {"a" => ["qr", {"b" => [0, 1]}], "c" => "bar"};
+
+    print "a == b\n" if equals($a, $b);
+    print "a != c\n" unless equals($a, $c);
 
 =cut
 
 sub equals {
     my ($first,$second) = @_;
-
     if(defined($first)) {
 	if(defined($second)) {
 	    if(ref($first) eq ref($second)) {
@@ -220,18 +216,33 @@ sub equals {
 
 =head2 file_contents
 
-Returns string containing file contents.
+Returns string containing contents of a file.
+
+    my $some_data = file_contents($some_file);
 
 =cut
 
 sub file_contents {
     my ($filename) = @_;
     local $/;
-    open(FH, '<', $filename) or croak sprintf("unable to open file %s: %s", $filename, $!);
+    open(FH, '<', $filename)
+	or croak sprintf("unable to open file %s: %s", $filename, $!);
     <FH>;
 }
 
 =head2 find
+
+DEPRECATED -- Please consider using &find_first, for example:
+
+   my $found = find('clide', $list,
+                    sub { 
+                        my ($name,$person) = @_;
+                        ($name eq $person->{name} ? 1 : 0);
+                    });
+
+   ...can be converted to:
+
+   my $found = find_first($list, sub { shift->{name} eq 'clide' });
 
 Return the first element in the list for which the test predicate
 returns a truthy value.  Returns undef when no element passes.
@@ -240,25 +251,88 @@ The test predicate function ought to take two values, the first is the
 element to find, and the second is the element in the list being
 tested.
 
-    my $item = 'bozo';
-    my $list = ['fred', 'jane', 'bozo', 'albert'];
-    my $found = find($item, $list, \&equals);
-
 =cut
 
 sub find {
-    my ($element,$list,$test) = @_;
-
-    if(!defined($list) || ref($list) ne 'ARRAY') {
-    	croak("second argument to find ought to be a list");
-    } elsif(!defined($test) || ref($test) ne 'CODE') {
-    	croak("third argument to find ought to be a function");
+    my ($element,$list,$predicate) = @_;
+    if(ref($list) ne 'ARRAY') {
+    	croak("argument ought to be array reference");
+    } elsif(ref($predicate) ne 'CODE') {
+    	croak("argument ought to be function");
     } else {
-	foreach (@$list) {
-	    return $_ if(&{$test}($element, $_));
-	}
+    	foreach (@$list) {
+    	    return $_ if(&{$predicate}($element, $_));
+    	}
+	undef;
     }
-    undef;
+}
+
+=head2 find_first
+
+Return the first element in the list for which the test predicate
+returns a truthy value.  Returns undef when no element passes.
+
+The test predicate function ought to take a single value, namely, the
+element in the list being tested.
+
+    my $list = [{name => 'abe', age => 10},
+                {name => 'barney', age => 20},
+                {name => 'clide', age => 30},
+                {name => 'dean', age => 40}];
+    my $found = find_first($list, sub { shift->{name} eq 'clide' });
+    if(defined($found)) {
+        printf("Name: %s, Age: %d\n", $found->{name}, $found->{age});
+    }
+
+=cut
+
+sub find_first {
+    my ($list,$predicate) = @_;
+    if(ref($list) ne 'ARRAY') {
+    	croak("argument ought to be array reference");
+    } elsif(ref($predicate) ne 'CODE') {
+    	croak("argument ought to be function");
+    } else {
+    	foreach (@$list) {
+    	    return $_ if(&{$predicate}($_));
+    	}
+	undef;
+    }
+}
+
+=head2 find_all
+
+Return the list of elements in the list for which the test predicate
+returns a truthy value.  Returns empty list when no element passes.
+
+The test predicate function ought to take a single value, namely, the
+element in the list being tested.
+
+This function is a wrapper for grep, but using Array references
+instead of Arrays.  It also is has similar usage to the &find_first
+function in this package, and this is primarily why such a simple
+wrapper is included in this library.
+
+    my $list = [{name => 'abe', age => 10},
+                {name => 'barney', age => 20},
+                {name => 'clide', age => 30},
+                {name => 'dean', age => 40}];
+    my $youngsters = find_all($list, sub { shift->{age} < 30 });
+    foreach (@$found) {
+        printf("Name: %s, Age: %d\n", $_->{name}, $_->{age});
+    }
+
+=cut
+
+sub find_all {
+    my ($list,$predicate) = @_;
+    if(ref($list) ne 'ARRAY') {
+    	croak("argument ought to be array reference");
+    } elsif(ref($predicate) ne 'CODE') {
+    	croak("argument ought to be function");
+    } else {
+	[grep { &{$predicate}($_) } @$list];
+    }
 }
 
 =head2 directory_contents
@@ -268,6 +342,11 @@ system object inside directory argument.  Includes dot files, but
 omits '.' and '..' from its response.
 
 Croaks when directory argument is not a directory.
+
+    my $contents = directory_contents($some_dir);
+    foreach (@$contents) {
+        printf("File: %s\n", $_);
+    }
 
 =cut
 
@@ -294,12 +373,21 @@ filename if it does not exist if necessary.
 It will croak if there are no permissions to create the required
 directories.
 
+    open(FH, '>', ensure_directories_exist($filename))
+        or croak sprintf("cannot open [%s]: %s", $!);
+
 =cut
 
 sub ensure_directories_exist {
     my ($filename) = @_;
-    # NOTE: mkpath croaks if error
-    File::Path::mkpath(File::Basename::dirname($filename));
+    eval {
+	# NOTE: mkpath croaks if error
+	File::Path::mkpath(File::Basename::dirname($filename));
+    };
+    if($@) {
+	croak sprintf("unable to ensure_directories_exist for [%s]: %s",
+		      $filename, $@);
+    }
     $filename;
 }
 
@@ -307,6 +395,13 @@ sub ensure_directories_exist {
 
 Returns the command list, maybe prefixed by appropriate sudo and
 arguments, to change the account.
+
+If the account is undefined, the empty string, or matches the account
+name of the process, this function acts as a no-op, and returns the
+array reference unmodified.
+
+Otherwise, it prefixes the command list with the sudo and arguments to
+sudo.
 
 =cut
 
@@ -316,12 +411,9 @@ sub change_account {
        && $account ne $ENV{LOGNAME}
        && $account ne '') {
 	if($account eq 'root') {
-	    unshift(@$list, '-n');
-	    unshift(@$list, 'sudo');
+	    unshift(@$list, ('sudo','-n'));
 	} else {
-	    unshift(@$list, $account);
-	    unshift(@$list, '-inu');
-	    unshift(@$list, 'sudo');
+	    unshift(@$list, ('sudo','-inu',$account));
 	}
     }
     $list;
@@ -330,6 +422,10 @@ sub change_account {
 =head2 shell_quote
 
 Returns the string quoted for the shell.
+
+    my $list = ['egrep','-i','ERROR|WARNING', 'crazy filename.txt'];
+    $list = [map { shell_quote($_) } @$list];
+    system $list;
 
 =cut
 
@@ -357,6 +453,11 @@ directory is restored upon function exit.  If the original working
 directory no longer exists when your function exits, this will croak
 with a suitable message.
 
+    with_cwd("/some/path",
+             sub {
+                 # do something with cwd
+             });
+
 =cut
 
 sub with_cwd {
@@ -364,7 +465,7 @@ sub with_cwd {
     my ($result,$status);
     my $old_dir = POSIX::getcwd();
     if(ref($function) ne 'CODE') {
-	croak("second argument to with_locked_file ought to be a function");
+	croak("argument ought to be function");
     }
     eval {
     chdir($new_dir) 
@@ -404,13 +505,18 @@ and the file handle is closed upon function exit.
 This function will croak if another process has a lock on the
 specified file.
 
+    with_locked_file("/some/file", 
+                     sub {
+                         # do something with that file
+                     });
+
 =cut
 
 sub with_locked_file {
     my ($file,$function) = @_;
     my ($result,$status);
     if(ref($function) ne 'CODE') {
-	croak("second argument to with_locked_file ought to be a function");
+	croak("argument ought to be function");
     }
     verbose("getting exclusive lock: [%s]", $file);
     open(FILE, '<', $file) or croak error('unable to open: [%s]: %s',$file, $!);
@@ -434,13 +540,21 @@ recommended that software is written to only use the file handle, as
 this prevents some types of race conditions that could be leveraged by
 mischiefous programs.  The file name is also provided.
 
+    my $filename = "data.txt";
+    with_temp(sub {
+                  my ($fh,$fname) = @_;
+                  printf $fh "some test data\n";
+                  close $fh;
+                  rename($fname,$filename);
+              });
+
 =cut
 
 sub with_temp {
     my ($function) = @_;
     my ($result,$status);
     if(ref($function) ne 'CODE') {
-    	croak("first argument to with_temp ought to be a function");
+    	croak("argument ought to be function");
     }
     my ($fh,$fname) = File::Temp::tempfile();
     $result = eval {&{$function}($fh,$fname)};
@@ -460,6 +574,11 @@ sub with_temp {
 Executes the specified function, and terminate it early if the
 function does not return within the specified number of seconds.
 
+    with_timeout("calculating primes", 10,
+                 sub {
+                   # convert electrical energy into heat energy
+                 });
+
 =cut
 
 sub with_timeout {
@@ -477,6 +596,13 @@ sub with_timeout {
 
 Spawns a child and executes the specified function, optionally with a
 timeout.
+
+    with_timeout_spawn_child({
+        name => "timeout while calculating prime numbers",
+        timeout => 60,
+        function => sub {
+            # what is the 1,000,000th prime number?
+        });
 
 =cut
 

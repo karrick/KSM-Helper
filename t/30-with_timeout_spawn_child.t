@@ -1,10 +1,14 @@
 #!/usr/bin/env perl
 
 use utf8;
+# use diagnostics;
 use strict;
 use warnings;
-
+use Carp;
 use Test::More;
+# use Test::Class;
+# use base qw(Test::Class);
+# END { Test::Class->runtests }
 
 ########################################
 
@@ -128,8 +132,9 @@ sub ensure_child_return_sanity {
 
 $log = with_captured_log(
     sub {
+	no warnings;
 	my $name = 'invalid-tester';
-	my $list = ['exec-should-not-find-this-program'];
+	my $list = ['ignore-cant-exec-warning'];
 	my $child = with_timeout_spawn_child({name => $name, list => $list});
 	# The child process will attempt to exec and die.  parent will
 	# only know by fetching the status code; the child die will
@@ -138,7 +143,7 @@ $log = with_captured_log(
 	isnt($child->{status}, 0, "should have failed status");
     });
 like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
-like($log, qr/ERROR: unable to exec \(invalid-tester\): \(exec-should-not-find-this-program\): No such file or directory/);
+like($log, qr/ERROR: unable to exec \(invalid-tester\): \(ignore-cant-exec-warning\): No such file or directory/);
 like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
 
 ########################################
