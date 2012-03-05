@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.01
+Version 1.02
 
 =cut
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 
 =head1 SYNOPSIS
 
@@ -343,7 +343,15 @@ omits '.' and '..' from its response.
 
 Croaks when directory argument is not a directory.
 
+    # Prints the contents of the $some_dir directory:
     my $contents = directory_contents($some_dir);
+    foreach (@$contents) {
+        printf("File: %s\n", $_);
+    }
+
+    # Prints the contents of the $some_dir directory, each with the
+    # directory name prefixed:
+    my $contents = [map { sprintf("%s/%s",$some_dir,$_) } @{directory_contents($some_dir)}];
     foreach (@$contents) {
         printf("File: %s\n", $_);
     }
@@ -353,16 +361,16 @@ Croaks when directory argument is not a directory.
 sub directory_contents {
     my ($dir) = @_;
     $dir ||= '.';
-    if(! -d $dir) {
-	croak sprintf("invalid directory: %s", $dir);
-    } else {
-	with_cwd($dir, 
-		 sub {
-		     [map { sprintf("%s/%s", $dir, $_) }
-		      (glob("*"),
-		       grep(!/^\.{1,2}$/, glob(".*")))];
-		 });
-    }
+    my $files = [];
+    eval {
+	opendir(DH, $dir) or die("cannot open: $!");
+	foreach (readdir DH) {
+	    push(@$files,$_) unless /^\.{1,2}$/;
+	}
+	closedir DH;
+    };
+    croak("unable to read directory_contents [$dir]: $!") if($@);
+    $files;
 }
 
 =head2 ensure_directories_exist

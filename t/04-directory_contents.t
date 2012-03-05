@@ -62,7 +62,7 @@ sub remove_test_artifact_and_return_to_start_directory : Tests(teardown) {
 
 sub test_directory_contents_croaks_when_directory_invalid : Tests {
     eval {directory_contents("t/data/invalid-directory")};
-    like($@, qr/invalid directory/);
+    like($@, qr|No such file or directory|);
 }
 
 sub test_directory_contents_assumes_cwd_when_no_argument : Tests {
@@ -97,10 +97,8 @@ sub test_directory_contents_includes_regular_files : Tests {
 }
 
 sub test_directory_contents_returns_undef_when_lack_permissions : Tests {
-    eval {
-	directory_contents('/root');
-    };
-    like($@, qr/Permission denied/);
+    eval {directory_contents('/root')};
+    like($@, qr|Permission denied|);
 }
 
 sub test_directory_contents_returns_empty_array_when_directory_empty : Tests {
