@@ -363,7 +363,7 @@ sub directory_contents {
     $dir ||= '.';
     my $files = [];
     eval {
-	opendir(DH, $dir) or die("cannot open: $!");
+	opendir(DH, $dir) or die("cannot opendir: $!");
 	foreach (readdir DH) {
 	    push(@$files,$_) unless /^\.{1,2}$/;
 	}
