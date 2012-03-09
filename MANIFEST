@@ -12,11 +12,14 @@ t/01-ensure_directories_exist.t
 t/01-file_contents.t
 t/01-shell_quote.t
 t/01-with_temp.t
+t/01-wrap_ssh.t
+t/01-wrap_sudo.t
 t/02-equals.t
 t/02-find.t
 t/02-find_all.t
 t/02-find_first.t
 t/03-with_cwd.t
+t/03-with_lock.t
 t/03-with_locked_file.t
 t/04-directory_contents.t
 t/10-with_timeout.t

@@ -16,24 +16,24 @@ use KSM::Helper qw(:all);
 
 ########################################
 
-sub test_shell_quote_no_subst : Tests {
-    is(shell_quote('foo'), 'foo');
-    is(shell_quote('--bar'), '--bar');
-    is(shell_quote('a_0/Z.-9'), 'a_0/Z.-9');
+sub test_no_subst : Tests {
+    is(KSM::Helper::shell_quote('foo'), 'foo');
+    is(KSM::Helper::shell_quote('--bar'), '--bar');
+    is(KSM::Helper::shell_quote('a_0/Z.-9'), 'a_0/Z.-9');
 }
 
-sub test_shell_quote_undef : Tests {
-    is(shell_quote(), '');
+sub test_undef : Tests {
+    is(KSM::Helper::shell_quote(), '');
 }
 
-sub test_shell_quote_empty_string : Tests {
-    is(shell_quote(''), "''");
+sub test_empty_string : Tests {
+    is(KSM::Helper::shell_quote(''), "''");
 }
 
-sub test_shell_quote_special_character : Tests {
-    is(shell_quote('!@#$%^&*(),<>?'), '\!\@\#\$\%\^\&\*\(\)\,\<\>\?');
+sub test_special_character : Tests {
+    is(KSM::Helper::shell_quote('!@#$%^&*(),<>?'), '\!\@\#\$\%\^\&\*\(\)\,\<\>\?');
 }
 
-sub test_shell_quote_command : Tests {
-    is(shell_quote('emacs --daemon'), 'emacs\ --daemon');
+sub test_command : Tests {
+    is(KSM::Helper::shell_quote('emacs --daemon'), 'emacs\ --daemon');
 }

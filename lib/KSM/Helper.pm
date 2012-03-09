@@ -20,22 +20,22 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.02
+Version 1.05
 
 =cut
 
-our $VERSION = '1.02';
+our $VERSION = '1.05';
 
 =head1 SYNOPSIS
 
-KSM::Helper provides a number of commonly used functions to expedite
-writting your program.
+B<KSM::Helper> provides a number of commonly used functions to
+expedite writting your program.
 
 All library functions here use references to hashes and arrays instead
 of a hash or array directly.
 
-Code examples below assume the :all export tag is imported by your
-code, see the EXPORT section for an example of how to do this.
+Code examples below assume the I<:all> export tag is imported by your
+code, see the B<EXPORT> section for an example of how to do this.
 
 =head1 EXPORT
 
@@ -43,7 +43,7 @@ Although no functions are exported by default, the most common
 functions may be imported into your namespace by importing the :all
 tag.  For example:
 
-    use KSM::Helper qw(:all);
+    C< use KSM::Helper qw(:all); >
 
 =cut
 
@@ -59,12 +59,18 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	find
 	find_all
 	find_first
+	shell_bang
 	shell_quote
 	with_cwd
+	with_lock
 	with_locked_file
 	with_temp
 	with_timeout
 	with_timeout_spawn_child
+	spawn
+	spawn_croak
+	wrap_ssh
+	wrap_sudo
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
 
@@ -84,10 +90,12 @@ our $exit_requested;
 Returns 1 if all elements in array satisfy test predicate, 0
 otherwise.
 
-The test predicate function ought to take one value, the element to
+The I<predicate> function ought to take one value, the element to
 test.
 
-    print "all even\n" if(all([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) }));
+    C< if(all([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) })) { >
+    C<     print "all even\n"; >
+    C< } >
 
 =cut
 
@@ -110,10 +118,12 @@ sub all {
 Returns 1 if any elements in array satisfy test predicate, 0
 otherwise.
 
-The test predicate function ought to take one value, the element to
+The I<predicate> function ought to take one value, the element to
 test.
 
-    print "some even\n" if(any([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) }));
+    C< if(any([2, 4, 6], sub { (shift % 2 == 0 ? 1 : 0) })) { >
+    C<   print "some even\n"; >
+    C< } >
 
 =cut
 
@@ -133,20 +143,20 @@ sub any {
 
 =head2 equals
 
-Returns 1 value if first element equals the second element, 0
+Returns 1 value if I<first> element equals the I<second> element, 0
 otherwise.
 
 Attempts to perform a deep comparison by recursively calling itself.
 This means, if your data structure contains a reference to itself, it
 will pop your Perl stack.
 
-    my $a = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
-    my $b = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"};
-    my $c = {"a" => ["q", {"b" => [2, 1]}], "c" => "bar"};
-    my $d = {"a" => ["qr", {"b" => [0, 1]}], "c" => "bar"};
+    C<< my $a = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"}; >>
+    C<< my $b = {"a" => ["q", {"b" => [0, 1]}], "c" => "bar"}; >>
+    C<< my $c = {"a" => ["q", {"b" => [2, 1]}], "c" => "bar"}; >>
+    C<< my $d = {"a" => ["qr", {"b" => [0, 1]}], "c" => "bar"}; >>
 
-    print "a == b\n" if equals($a, $b);
-    print "a != c\n" unless equals($a, $c);
+    C<< print "a == b\n" if equals($a, $b); >>
+    C<< print "a != c\n" unless equals($a, $c); >>
 
 =cut
 
@@ -166,7 +176,9 @@ sub equals {
 			if($first_size == $second_size) {
 			    my $size = scalar(@$first);
 			    for(my $index = 0; $index < $size; $index++) {
-				return 0 unless equals($first->[$index], $second->[$index]);
+				if(!equals($first->[$index],$second->[$index])) {
+				    return 0;
+				}
 			    }
 			    return 1;
 			} else {
@@ -196,7 +208,7 @@ sub equals {
 		    } elsif(ref($first) eq 'SCALAR') {
 			equals($$first,$$second);
 		    } elsif(ref($first) eq 'CODE') {
-		    	equals(&$first,&$second);
+			equals(&$first,&$second);
 		    } else {
 			die sprintf("do not know how to compare [%s] references", ref($first));
 		    }
@@ -216,9 +228,9 @@ sub equals {
 
 =head2 file_contents
 
-Returns string containing contents of a file.
+Returns string containing contents of F<filename>.
 
-    my $some_data = file_contents($some_file);
+    C<< my $some_data = file_contents($some_file); >>
 
 =cut
 
@@ -232,22 +244,23 @@ sub file_contents {
 
 =head2 find
 
-DEPRECATED -- Please consider using &find_first, for example:
+DEPRECATED -- Please consider using B<find_first>, for example:
 
-   my $found = find('clide', $list,
-                    sub { 
-                        my ($name,$person) = @_;
-                        ($name eq $person->{name} ? 1 : 0);
-                    });
+   C<< my $found = find('clide', $list, >>
+   C<<                  sub {  >>
+   C<<                      my ($name,$person) = @_; >>
+   C<<                      ($name eq $person->{name} ? 1 : 0); >>
+   C<<                  }); >>
 
    ...can be converted to:
 
-   my $found = find_first($list, sub { shift->{name} eq 'clide' });
+   C<< my $found = find_first($list, sub { shift->{name} eq 'clide' }); >>
 
-Return the first element in the list for which the test predicate
-returns a truthy value.  Returns undef when no element passes.
+Return the first element in I<list> for which the I<predicate>
+function returns a truthy value.  Returns C<undef> when no element
+passes.
 
-The test predicate function ought to take two values, the first is the
+The I<predicate> function ought to take two values, the first is the
 element to find, and the second is the element in the list being
 tested.
 
@@ -256,80 +269,84 @@ tested.
 sub find {
     my ($element,$list,$predicate) = @_;
     if(ref($list) ne 'ARRAY') {
-    	croak("argument ought to be array reference");
+	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     } else {
-    	foreach (@$list) {
-    	    return $_ if(&{$predicate}($element, $_));
-    	}
+	foreach (@$list) {
+	    return $_ if(&{$predicate}($element, $_));
+	}
 	undef;
     }
 }
 
 =head2 find_first
 
-Return the first element in the list for which the test predicate
-returns a truthy value.  Returns undef when no element passes.
+Return the first element in I<list> for which the I<predicate>
+function returns a truthy value.  Returns C<undef> when no element
+passes.
 
-The test predicate function ought to take a single value, namely, the
+The I<predicate> function ought to take a single value, namely, the
 element in the list being tested.
 
-    my $list = [{name => 'abe', age => 10},
-                {name => 'barney', age => 20},
-                {name => 'clide', age => 30},
-                {name => 'dean', age => 40}];
-    my $found = find_first($list, sub { shift->{name} eq 'clide' });
-    if(defined($found)) {
-        printf("Name: %s, Age: %d\n", $found->{name}, $found->{age});
-    }
+    C<< my $list = [{name => 'abe', age => 10}, >>
+    C<<             {name => 'barney', age => 20}, >>
+    C<<             {name => 'clide', age => 30}, >>
+    C<<             {name => 'dean', age => 40}]; >>
+    C<< my $found = find_first($list, sub { shift->{name} eq 'clide' }); >>
+
+    C<< if(defined($found)) { >>
+    C<<     printf("Name: %s, Age: %d\n", $found->{name}, $found->{age}); >>
+    C<< } >>
 
 =cut
 
 sub find_first {
     my ($list,$predicate) = @_;
     if(ref($list) ne 'ARRAY') {
-    	croak("argument ought to be array reference");
+	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     } else {
-    	foreach (@$list) {
-    	    return $_ if(&{$predicate}($_));
-    	}
+	foreach (@$list) {
+	    return $_ if(&{$predicate}($_));
+	}
 	undef;
     }
 }
 
 =head2 find_all
 
-Return the list of elements in the list for which the test predicate
-returns a truthy value.  Returns empty list when no element passes.
+Return the list of elements in I<list> for which the I<predicate>
+function returns a truthy value.  Returns empty list when no element
+passes.
 
-The test predicate function ought to take a single value, namely, the
+The I<predicate> function ought to take a single value, namely, the
 element in the list being tested.
 
-This function is a wrapper for grep, but using Array references
-instead of Arrays.  It also is has similar usage to the &find_first
-function in this package, and this is primarily why such a simple
-wrapper is included in this library.
+This function is a wrapper for the builtin B<grep> operator, but using
+Array references instead of Arrays.  It also is has similar usage to
+the B<find_first> function in this package, and this is primarily why
+such a simple wrapper is included in this library.
 
-    my $list = [{name => 'abe', age => 10},
-                {name => 'barney', age => 20},
-                {name => 'clide', age => 30},
-                {name => 'dean', age => 40}];
-    my $youngsters = find_all($list, sub { shift->{age} < 30 });
-    foreach (@$found) {
-        printf("Name: %s, Age: %d\n", $_->{name}, $_->{age});
-    }
+    C<< my $list = [{name => 'abe', age => 10}, >>
+    C<<             {name => 'barney', age => 20}, >>
+    C<<             {name => 'clide', age => 30}, >>
+    C<<             {name => 'dean', age => 40}]; >>
+    C<< my $youngsters = find_all($list, sub { shift->{age} < 30 }); >>
+
+    C<< foreach (@$found) { >>
+    C<<     printf("Name: %s, Age: %d\n", $_->{name}, $_->{age}); >>
+    C<< } >>
 
 =cut
 
 sub find_all {
     my ($list,$predicate) = @_;
     if(ref($list) ne 'ARRAY') {
-    	croak("argument ought to be array reference");
+	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     } else {
 	[grep { &{$predicate}($_) } @$list];
     }
@@ -339,22 +356,25 @@ sub find_all {
 
 Returns reference to array of strings, each string representing a file
 system object inside directory argument.  Includes dot files, but
-omits '.' and '..' from its response.
+omits F<'.'> and F<'..'> from its response.
 
 Croaks when directory argument is not a directory.
 
-    # Prints the contents of the $some_dir directory:
-    my $contents = directory_contents($some_dir);
-    foreach (@$contents) {
-        printf("File: %s\n", $_);
-    }
+    C<< # Prints the contents of the $some_dir directory: >>
+    C<< my $contents = directory_contents($some_dir); >>
+    C<< foreach (@$contents) { >>
+    C<<     printf("File: %s\n", $_); >>
+    C<< } >>
 
-    # Prints the contents of the $some_dir directory, each with the
-    # directory name prefixed:
-    my $contents = [map { sprintf("%s/%s",$some_dir,$_) } @{directory_contents($some_dir)}];
-    foreach (@$contents) {
-        printf("File: %s\n", $_);
-    }
+    Prints the contents of I<$some_dir>, each with the directory name
+    prefixed:
+
+    C<< my $contents = [map { sprintf("%s/%s",$some_dir,$_) } >>
+    C<<                 @{directory_contents($some_dir)}]; >>
+
+    C<< foreach (@$contents) { >>
+    C<<     printf("item: %s\n", $_); >>
+    C<< } >>
 
 =cut
 
@@ -375,14 +395,14 @@ sub directory_contents {
 
 =head2 ensure_directories_exist
 
-Takes and returns a filename, but creates the directory of the
-filename if it does not exist if necessary.
+Takes and returns I<filename>, but creates the directory of
+I<filename> if it does not exist if necessary.
 
-It will croak if there are no permissions to create the required
+It will croak if permissions are inadequate to create the required
 directories.
 
-    open(FH, '>', ensure_directories_exist($filename))
-        or croak sprintf("cannot open [%s]: %s", $!);
+    C<< open(FH, '>', ensure_directories_exist($filename)) >>
+    C<<     or croak sprintf("cannot open [%s]: %s", $!); >>
 
 =cut
 
@@ -401,21 +421,62 @@ sub ensure_directories_exist {
 
 =head2 change_account
 
-Returns the command list, maybe prefixed by appropriate sudo and
+DEPRECATED -- see B<wrap_sudo>
+
+Returns the command I<list>, maybe prefixed by appropriate C<sudo> and
 arguments, to change the account.
 
-If the account is undefined, the empty string, or matches the account
+If I<account> is undefined, the empty string, or matches the account
 name of the process, this function acts as a no-op, and returns the
 array reference unmodified.
 
-Otherwise, it prefixes the command list with the sudo and arguments to
-sudo.
+Otherwise, it prefixes the command list with C<sudo> and arguments.
 
 =cut
 
 sub change_account {
-    my ($list,$account) = @_;
-    if(defined($account) 
+    wrap_sudo(@_);
+}
+
+=head2 wrap_ssh
+
+Internal function to prefix command I<list> with required B<ssh>
+invocation parameters.
+
+If I<host> is undefined, the empty string, or matches the hostname of
+the server this process is running on, this function acts as a no-op,
+and returns the array reference unmodified.
+
+Otherwise, it prefixes command I<list> with B<ssh> and arguments.
+
+=cut
+
+sub wrap_ssh {
+    my($list,$host)=@_;
+    chomp(my $hostname = `hostname -s`);
+    if(defined($host) && $host ne '' && $host ne 'localhost' && $host ne $hostname) {
+	$list = [map { shell_quote($_) } @$list];
+	unshift(@$list, ('ssh',$host,'-qxT','-o','PasswordAuthentication=no','-o','StrictHostKeyChecking=no','-o','ConnectTimeout=5'));
+    }
+    $list;
+}
+
+=head2 wrap_sudo
+
+Internal function to prefix command I<list> with required B<sudo>
+invocation parameters.
+
+If I<account> is undefined, the empty string, or matches the account
+name of the process, this function acts as a no-op, and returns the
+array reference unmodified.
+
+Otherwise, it prefixes command I<list> with B<sudo> and arguments.
+
+=cut
+
+sub wrap_sudo {
+    my($list,$account)=@_;
+    if(defined($account)
        && $account ne $ENV{LOGNAME}
        && $account ne '') {
 	if($account eq 'root') {
@@ -429,11 +490,11 @@ sub change_account {
 
 =head2 shell_quote
 
-Returns the string quoted for the shell.
+Returns I<input> string quoted for the shell.
 
-    my $list = ['egrep','-i','ERROR|WARNING', 'crazy filename.txt'];
-    $list = [map { shell_quote($_) } @$list];
-    system $list;
+    C<< my $list = ['egrep','-i','ERROR|WARNING', 'crazy filename.txt']; >>
+    C<< $list = [map { shell_quote($_) } @$list]; >>
+    C<< system $list; >>
 
 =cut
 
@@ -451,20 +512,139 @@ sub shell_quote {
     }
 }
 
+=head2 spawn
+
+Function to fork/exec a child process.  Child process command line is
+a I<list> of strings rather than a single string.  (See note regarding
+parameter expansion.)
+
+The result will be a hash with several key value pairs:
+
+    C<< my $child = spawn(['echo','one','two']); >>
+
+    C<< {signal => 0, status => 0, >>
+    C<<  stdout => "one two\n", stderr => ""} >>
+
+If you need to redirect C<stdin> from a string, pass it to this
+function as part of the options hash.
+
+    C<< my $child = spawn(['cat'], {stdin => "one\ntwo\tthree\n"}); >>
+
+    C<< {signal => 0, status => 0, >>
+    C<<  stdout => "one\ntwo\nthree\n", stderr => ""} >>
+
+=head3 PARAMETER EXPANSION
+
+As there will be no command interpreter, e.g., B<Bash>, to perform
+parameter expansion for you.  In other words, the following will not
+look for all the F<*.msg> files in the current working directory, but
+instead look for I<the file> 'C<*.msg>', with an asterisk in its name.
+
+    C<< my $child = spawn(['ls','*.msg']); >>
+
+=cut
+
+sub spawn {
+    my($list,$options)=@_;
+    croak("list must be array\n")   unless ref($list) eq 'ARRAY';
+    if(defined($options) && ref($options) ne 'HASH') {
+	croak("options must be hash");
+    }
+    my $child = {};
+    my $result = with_standard_redirection({stdin => $options->{stdin}}, sub {
+	if($child->{pid} = fork) {
+	    $child->{started} = time;
+	    my ($reaped_children,$exit_requested) = ({});
+	    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+	    local $SIG{CHLD} = sub {
+		use POSIX ":sys_wait_h";
+		while ((my $pid = waitpid(-1,WNOHANG)) > 0) {
+		    my $status = $?;
+		    $reaped_children->{$pid} = {ended => time, status => $status};
+		}
+	    };
+	    $child->{ended} = $child->{started} + $options->{timeout} if(defined($options->{timeout}));
+	    while(!defined($reaped_children->{$child->{pid}})) {
+		my $slept = (defined($options->{timeout}) ? sleep($child->{ended} - $child->{started}) : sleep);
+		if(!defined($reaped_children->{$child->{pid}})) {
+		    if($exit_requested) {
+			kill('TERM',$child->{pid});
+		    } elsif(defined($child->{ended}) && time >= $child->{ended}) {
+			kill('TERM',$child->{pid});
+		    }
+		}
+	    }
+	    # merge reaped_children values back into child hash
+	    $child->{status} = $reaped_children->{$child->{pid}}->{status};
+	    $child->{ended} = $reaped_children->{$child->{pid}}->{ended};
+	    $child->{duration} = $child->{ended} - $child->{started};
+	    exit if($exit_requested);
+	} elsif(defined($child->{pid})) {
+	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
+	    $list = wrap_sudo($list,$options->{sudo});
+	    $list = wrap_ssh($list,$options->{host});
+	    exit 1 if(!exec @$list);
+	    # NOTREACHED
+	} else {
+	    die sprintf("unable to fork: %s", $!);
+	}
+					   });
+    # merge pertinent result hash values into child
+    $child->{signal} = $child->{status} & 127;
+    $child->{status} = $child->{status} >> 8;
+    $child->{stderr} = $result->{stderr};
+    $child->{stdout} = $result->{stdout};
+
+    # NOTE: value and exception are returned by
+    # with_standard_redirection, but they are not expected for spawn's
+    # function
+    if(0) {
+	$child->{exception} = $result->{exception};
+	$child->{value} = $result->{value};
+    }
+    $child;
+}
+
+=head2 spawn_bang
+
+When you want to spawn a subprocess, and you'd like to have an
+exception raised for you when the process exits with a non-zero status
+code, B<spawn_bang> might be useful.
+
+    C<< spawn_bang(['scp',"${host}:${source}",$dest]); >>
+    C<< print "$source downloaded if we get here\n"; >>
+
+=cut
+
+sub spawn_bang {
+    my($list,$options)=@_;
+    croak("list must be array\n")   unless ref($list) eq 'ARRAY';
+    if(defined($options) && ref($options) ne 'HASH') {
+	croak("options must be hash");
+    }
+    my $child = spawn($list,$options);
+    if($child->{exception}) {
+	die($child->{exception});
+    } elsif($child->{status}) {
+	die sprintf("child (%s) status %d", (defined($options->{name}) ? $options->{name} : "unknown"), $child->{status});
+    }
+    $child;
+}
+
 =head2 with_cwd
 
-Change to the specified directory, creating it if necessary, and
-execute the specified function.
+Change current working directory to I<directory>, creating it if
+necessary, and execute I<function>.
 
-Even when an error is triggered in your function, the original working
+Even when an error is triggered in I<function>, the original working
 directory is restored upon function exit.  If the original working
-directory no longer exists when your function exits, this will croak
+directory no longer exists when I<function> exits, this will croak
 with a suitable message.
 
-    with_cwd("/some/path",
-             sub {
-                 # do something with cwd
-             });
+    C<< with_cwd("/some/path", >>
+    C<<          sub { >>
+    C<<              # do something with cwd >>
+    C<<          }); >>
 
 =cut
 
@@ -476,14 +656,14 @@ sub with_cwd {
 	croak("argument ought to be function");
     }
     eval {
-    chdir($new_dir) 
+    chdir($new_dir)
 	or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
     };
     if($@) {
 	my $status = $@;
 	if($status =~ /No such file or directory/) {
-	    File::Path::mkpath($new_dir);	    
-	    chdir($new_dir) 
+	    File::Path::mkpath($new_dir);
+	    chdir($new_dir)
 		or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
 	} else {
 	    croak $status;
@@ -492,7 +672,7 @@ sub with_cwd {
     verbose("cwd: [%s]", $new_dir);
     $result = eval { &{$function}() };
     $status = $@;
-    chdir($old_dir) 
+    chdir($old_dir)
 	or croak error("unable to return to previous directory [%s]: %s",
 		       $old_dir, $!);
     verbose("cwd: [%s]", $old_dir);
@@ -500,61 +680,147 @@ sub with_cwd {
     $result;
 }
 
-=head2 with_locked_file
+=head2 with_lock
 
-Execute the specified function with a given file locked.
+Execute I<function> with F<filename> locked.
 
-Lock file is created if it does not yet exist, but it is not removed
-upon completion of function.
+F<filename> is created if it does not yet exist, but it is not removed
+upon completion of I<function>.
 
-Even when an error is triggered in your function, the lock is removed
-and the file handle is closed upon function exit.
+Even when an error is triggered in I<function>, the lock is removed
+and the file handle is closed upon I<function> exit.
 
-This function will croak if another process has a lock on the
-specified file.
+This function will croak if another process has a lock on F<filename>.
 
-    with_locked_file("/some/file", 
-                     sub {
-                         # do something with that file
-                     });
+    C<< with_lock("/some/file",  >>
+    C<<           sub { >>
+    C<<               # do something with that file >>
+    C<<           }); >>
 
 =cut
 
-sub with_locked_file {
-    my ($file,$function) = @_;
+sub with_lock {
+    my ($filename,$function) = @_;
     my ($result,$status);
     if(ref($function) ne 'CODE') {
 	croak("argument ought to be function");
     }
-    verbose("getting exclusive lock: [%s]", $file);
-    open(FILE, '<', $file) or croak error('unable to open: [%s]: %s',$file, $!);
-    flock(FILE, LOCK_EX | LOCK_NB) or croak error('unable to lock: [%s]: %s',$file, $!);
-    verbose("have exclusive lock: [%s]", $file);
+    verbose("getting exclusive lock: [%s]", $filename);
+    open(FILE, '<', $filename) or croak error('unable to open: [%s]: %s',$filename, $!);
+    flock(FILE, LOCK_EX | LOCK_NB) or croak error('unable to lock: [%s]: %s',$filename, $!);
+    verbose("have exclusive lock: [%s]", $filename);
     $result = eval { &{$function}() };
     $status = $@;
-    close(FILE) or croak error("unable to close: [%s]: %s",$file, $!);
-    verbose("released exclusive lock: [%s]", $file);
+    close(FILE) or croak error("unable to close: [%s]: %s",$filename, $!);
+    verbose("released exclusive lock: [%s]", $filename);
     croak($status) if($status);
+    $result;
+}
+
+=head2 with_locked_file
+
+DEPRECATED -- see B<with_lock>.
+
+=cut
+
+sub with_locked_file {
+    with_lock(@_);
+}
+
+=head2 with_standard_redirection
+
+Execute I<function> with C<stdin> redirected from a source string, and
+C<stdout>, and C<stderr> redirected to strings.
+
+If you need to redirect C<stdin> from a string, pass it as part of the
+I<options> hash:
+
+    C<< my $result = with_standard_redirection({stdin => "foobar\n"}, >>
+    C<<                  sub {  >>
+    C<<                      while(<>) { print; } >>
+    C<<                      42; >>
+    C<<                  }); >>
+
+The I<result> hash will contain several key value pairs. The above
+command would return the following hash:
+
+    C<< { stdout => "foobar\n", stderr => "", >>
+    C<<   value => 42, exception => "" } >>
+
+The exception key value pair will contain any message from an enclosed
+die:
+
+    C<< my $result = with_standard_redirection({stdin => "foobar\n"}, >>
+    C<<                  sub {  >>
+    C<<                      while(<>) { print; } >>
+    C<<                      die "unloved"; >>
+    C<<                  }); >>
+    C<< die($result->{exception}) if($result->{exception}); >>
+
+=cut
+
+sub with_standard_redirection {
+    my ($options,$function) = @_;
+    croak("options must be hash")  unless ref($options) eq 'HASH';
+    croak("function must be code") unless ref($function) eq 'CODE';
+
+    my $result = {};
+    open(my $stdin_saved, "<&STDIN")   or die "unable to dup STDIN";
+    open(my $stdout_saved, ">&STDOUT") or die "unable to dup STDOUT";
+    open(my $stderr_saved, ">&STDERR") or die "unable to dup STDERR";
+    with_temp(
+	sub {
+	    my ($stdin_fh, $stdin_temp) = @_;
+	    if(defined($options->{stdin})) {
+		open(FH,'>',$stdin_temp)
+		    or die sprintf("unable to open > [%s]: %s", $stdin_temp, $!);
+		printf FH "%s", $options->{stdin};
+		close FH;
+		open(STDIN,"<&",$stdin_fh)
+		    or die sprintf("unable to redirect STDIN: %s", $!);
+	    }
+	    with_temp(
+		sub {
+		    my ($stderr_fh, $stderr_temp) = @_;
+		    open(STDERR,">&",$stderr_fh)
+			or die sprintf("unable to reopen STDERR: %s", $!);
+		    select((select(STDERR), $| = 1)[0]); # autoflush
+		    with_temp(
+			sub {
+			    my ($stdout_fh, $stdout_temp) = @_;
+			    open(STDOUT,">&",$stdout_fh)
+				or die sprintf("unable to reopen STDOUT: %s", $!);
+			    select((select(STDOUT), $| = 1)[0]); # autoflush
+			    $result->{value} = eval { &{$function}() };
+			    $result->{exception} = $@;
+			    $result->{stdout} = file_contents($stdout_temp);
+			});
+		    $result->{stderr} = file_contents($stderr_temp);
+		});
+	});
+    open(STDIN, "<&", $stdin_saved)   or die "unable to restore STDIN";
+    open(STDOUT, ">&", $stdout_saved) or die "unable to restore STDOUT";
+    open(STDERR, ">&", $stderr_saved) or die "unable to restore STDERR";
     $result;
 }
 
 =head2 with_temp
 
-Executes the specified function with a temporary file, cleaning it up
-upon completion of function.
+Executes I<function> with a temporary file, cleaning it up upon
+completion of I<function>.
 
 Returns both the opened file handle and the file name.  It is
 recommended that software is written to only use the file handle, as
 this prevents some types of race conditions that could be leveraged by
 mischiefous programs.  The file name is also provided.
 
-    my $filename = "data.txt";
-    with_temp(sub {
-                  my ($fh,$fname) = @_;
-                  printf $fh "some test data\n";
-                  close $fh;
-                  rename($fname,$filename);
-              });
+    C<< my $filename = "data.txt"; >>
+    C<< with_temp(sub { >>
+    C<<               my ($fh,$fname) = @_; >>
+    C<<               printf $fh "some test data\n"; >>
+    C<<               close $fh; >>
+    C<<               rename($fname,$filename); >>
+    C<<           }); >>
 
 =cut
 
@@ -562,7 +828,7 @@ sub with_temp {
     my ($function) = @_;
     my ($result,$status);
     if(ref($function) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     }
     my ($fh,$fname) = File::Temp::tempfile();
     $result = eval {&{$function}($fh,$fname)};
@@ -579,13 +845,13 @@ sub with_temp {
 
 =head2 with_timeout
 
-Executes the specified function, and terminate it early if the
-function does not return within the specified number of seconds.
+Executes I<function>, and terminate it early if it does not return
+within I<timeout> number of seconds.
 
-    with_timeout("calculating primes", 10,
-                 sub {
-                   # convert electrical energy into heat energy
-                 });
+    C<< with_timeout("calculating primes", 10, >>
+    C<<              sub { >>
+    C<<                # convert electrical energy into heat energy >>
+    C<<              }); >>
 
 =cut
 
@@ -602,15 +868,16 @@ sub with_timeout {
 
 =head2 with_timeout_spawn_child
 
-Spawns a child and executes the specified function, optionally with a
-timeout.
+DEPRECATED -- see B<spawn>
 
-    with_timeout_spawn_child({
-        name => "timeout while calculating prime numbers",
-        timeout => 60,
-        function => sub {
-            # what is the 1,000,000th prime number?
-        });
+Spawns I<child> process, optionally with a I<timeout>.
+
+    C<< with_timeout_spawn_child({ >>
+    C<<     name => "timeout while calculating prime numbers", >>
+    C<<     timeout => 60, >>
+    C<<     function => sub { >>
+    C<<         # what is the 1,000,000th prime number? >>
+    C<<     }); >>
 
 =cut
 
@@ -642,7 +909,7 @@ sub with_timeout_spawn_child {
 		$child->{ended} = $child->{started} + $child->{timeout};
 	    }
 	    info('spawned child %d (%s)%s', $pid, $child->{name},
-		 (defined($child->{timeout}) 
+		 (defined($child->{timeout})
 		  ? sprintf(" with %d second timeout", $child->{timeout})
 		  : ""));
 	    while(!defined($reaped_children->{$pid})) {
@@ -679,7 +946,7 @@ sub with_timeout_spawn_child {
 		exit;
 	    } elsif($child->{list}) {
 		if(!exec @{$child->{list}}) {
-		    error("unable to exec (%s): (%s): %s", 
+		    error("unable to exec (%s): (%s): %s",
 			  $child->{name}, $child->{list}->[0], $!);
 		    exit 1;
 		}
@@ -693,9 +960,9 @@ sub with_timeout_spawn_child {
 
 =head2 REAPER
 
-Acts as the process' handler for SIGCHLD signals to prevent zombie
-processes by collecting child exit status information when a child
-process terminates.
+Internal function to act as the process' handler for C<SIGCHLD>
+signals to prevent zombie processes by collecting child exit status
+information when a child process terminates.
 
 =cut
 
@@ -717,7 +984,7 @@ sub REAPER {
 
 =head2 timeout_child
 
-Log and send child process the TERM signal.
+Internal function to send child process the C<TERM> signal.
 
 =cut
 
@@ -725,15 +992,15 @@ sub timeout_child {
     my ($child) = @_;
     info("timeout: sending child %d (%s) the TERM signal%s",
 	 $child->{pid}, $child->{name},
-	 (defined($child->{timeout}) 
-	  ? sprintf(" after %s seconds", $child->{timeout}) 
+	 (defined($child->{timeout})
+	  ? sprintf(" after %s seconds", $child->{timeout})
 	  : ''));
     kill('TERM', $child->{pid});
 }
 
 =head2 collect_child_stats
 
-Collect stats from terminated child process.
+Internal function to collect stats from terminated child process.
 
 =cut
 
@@ -748,7 +1015,7 @@ sub collect_child_stats {
 
 =head2 log_child_termination
 
-Logs the termination of a child process.
+Internal function to log the termination of a child process.
 
 =cut
 
@@ -778,7 +1045,7 @@ sub log_child_termination {
 	     $child->{pid}, $child->{name});
     }
     $child;
-}	
+}
 
 =head1 AUTHOR
 
@@ -786,9 +1053,11 @@ Karrick S. McDermott, C<< <karrick at karrick.net> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-ksm-helper at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=KSM-Helper>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report any bugs or feature requests to C<bug-ksm-helper at
+rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=KSM-Helper>.  I will
+be notified, and then you'll automatically be notified of progress on
+your bug as I make changes.
 
 
 
