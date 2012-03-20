@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.06
+Version 1.08
 
 =cut
 
-our $VERSION = '1.06';
+our $VERSION = '1.08';
 
 =head1 SYNOPSIS
 
@@ -68,7 +68,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_timeout
 	with_timeout_spawn_child
 	spawn
-	spawn_croak
+	spawn_bang
 	wrap_ssh
 	wrap_sudo
 )]);
@@ -552,17 +552,18 @@ sub spawn {
     }
     my $child = {};
     my $result = with_standard_redirection({stdin => $options->{stdin}}, sub {
+	my ($reaped_children,$exit_requested) = ({});
+	local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+	local $SIG{CHLD} = sub {
+	    use POSIX ":sys_wait_h";
+	    while ((my $pid = waitpid(-1,WNOHANG)) > 0) {
+		my $status = $?;
+		$reaped_children->{$pid} = {ended => time, status => $status};
+	    }
+	};
+
 	if($child->{pid} = fork) {
 	    $child->{started} = time;
-	    my ($reaped_children,$exit_requested) = ({});
-	    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
-	    local $SIG{CHLD} = sub {
-		use POSIX ":sys_wait_h";
-		while ((my $pid = waitpid(-1,WNOHANG)) > 0) {
-		    my $status = $?;
-		    $reaped_children->{$pid} = {ended => time, status => $status};
-		}
-	    };
 	    $child->{ended} = $child->{started} + $options->{timeout} if(defined($options->{timeout}));
 	    while(!defined($reaped_children->{$child->{pid}})) {
 		my $slept = (defined($options->{timeout}) ? sleep($child->{ended} - $child->{started}) : sleep);
