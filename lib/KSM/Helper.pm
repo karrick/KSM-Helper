@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.08
+Version 1.09
 
 =cut
 
-our $VERSION = '1.08';
+our $VERSION = '1.09';
 
 =head1 SYNOPSIS
 
@@ -59,7 +59,6 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	find
 	find_all
 	find_first
-	shell_bang
 	shell_quote
 	with_cwd
 	with_lock
