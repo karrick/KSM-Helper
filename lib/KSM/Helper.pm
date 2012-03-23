@@ -63,6 +63,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_cwd
 	with_lock
 	with_locked_file
+	with_logging_spawn
 	with_temp
 	with_timeout
 	with_timeout_spawn_child

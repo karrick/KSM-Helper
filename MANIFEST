@@ -24,6 +24,7 @@ t/03-with_locked_file.t
 t/04-directory_contents.t
 t/10-with_timeout.t
 t/20-spawning.t
+t/25-with_logging_spawn.t
 t/30-with_timeout_spawn_child.t
 t/boilerplate.t
 t/manifest.t
