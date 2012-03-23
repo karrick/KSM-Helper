@@ -63,6 +63,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_cwd
 	with_lock
 	with_locked_file
+	with_logging_spawn
 	with_temp
 	with_timeout
 	with_timeout_spawn_child
@@ -627,6 +628,43 @@ sub spawn_bang {
 	die($child->{exception});
     } elsif($child->{status}) {
 	die sprintf("child (%s) status %d", (defined($options->{name}) ? $options->{name} : "unknown"), $child->{status});
+    }
+    $child;
+}
+
+=head2 with_logging_spawn
+
+Execute I<list>, routing C<STDOUT> and C<STDERR> to log facility.
+
+=cut
+
+sub with_logging_spawn {
+    my ($list,$options) = @_;
+    croak("ought to pass in list\n") if(ref($list) ne 'ARRAY');
+    croak("options ought to be hash\n") if(ref($options) ne 'HASH');
+    croak("options ought to have name key\n") if(!defined($options->{name}));
+    croak("option logger ought to be CODE\n") if(defined($options->{logger}) && ref($options->{logger}) ne 'CODE');
+
+    my $logger = $options->{logger} || \&KSM::Logger::verbose;
+    my $joined = join(' ',@$list);
+
+    if($options->{log_command_line}) {
+	&{$logger}("%s: [%s]", $options->{name}, $joined);
+    } else {
+	&{$logger}("%s", $options->{name});
+    }
+
+    my $child = spawn($list, $options);
+    if($child->{status} == 0 || $options->{nonzero_okay}) {
+	foreach my $stream (qw(stdout stderr)) {
+	    foreach (split(/\n/, $child->{$stream})) {debug("%s: %s", $options->{name}, $_)}
+	}
+    } else {
+	foreach my $stream (qw(stdout stderr)) {
+	    foreach (split(/\n/, $child->{$stream})) {error("%s: %s", $options->{name}, $_)}
+	}
+	die error("unable to %s: (exit code: %d) command = [%s]\n",
+		  $options->{name}, $child->{status}, $joined);
     }
     $child;
 }
