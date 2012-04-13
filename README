@@ -1,6 +1,7 @@
 KSM-Helper
 
-This module provides a number of commonly used functions to expedite writing your program.
+This module provides a number of commonly used functions to expedite
+writing your program.
 
 All library functions here use references to hashes and arrays instead
 of hash or arrays directly.
@@ -24,20 +25,6 @@ After installing, you can find documentation for this module with the
 perldoc command.
 
     perldoc KSM::Helper
-
-You can also look for information at:
-
-    RT, CPAN's request tracker
-        http://rt.cpan.org/NoAuth/Bugs.html?Dist=KSM-Helper
-
-    AnnoCPAN, Annotated CPAN documentation
-        http://annocpan.org/dist/KSM-Helper
-
-    CPAN Ratings
-        http://cpanratings.perl.org/d/KSM-Helper
-
-    Search CPAN
-        http://search.cpan.org/dist/KSM-Helper/
 
 
 LICENSE AND COPYRIGHT
