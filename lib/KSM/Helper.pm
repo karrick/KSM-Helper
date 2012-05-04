@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.10
+Version 1.11
 
 =cut
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 =head1 SYNOPSIS
 
@@ -660,8 +660,13 @@ sub with_logging_spawn {
 	    foreach (split(/\n/, $child->{$stream})) {debug("%s: %s", $options->{name}, $_)}
 	}
     } else {
+	my $why = "";
+	if($options->{log}) {
+	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{log});
+	}
+	error("%s: FAILED status %s%s", $options->{name}, $child->{status}, $why);
 	foreach my $stream (qw(stdout stderr)) {
-	    foreach (split(/\n/, $child->{$stream})) {error("%s: %s", $options->{name}, $_)}
+	    foreach (split(/\n/, $child->{$stream})) {error("%s: %s: %s", $options->{name}, $stream, $_)}
 	}
 	die error("unable to %s: (exit code: %d) command = [%s]\n",
 		  $options->{name}, $child->{status}, $joined);

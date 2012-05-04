@@ -47,7 +47,6 @@ sub with_captured_log {
 # }
 
 # sub test_should_debug_stdout : Tests {
-    # my
     $log = with_captured_log(sub {
 	with_logging_spawn(["echo","hello","world"], {
 	    name => 'test echo',
@@ -57,7 +56,6 @@ sub with_captured_log {
 # }
 
 # sub test_should_debug_stderr : Tests {
-    # my
     $log = with_captured_log(sub {
 	with_logging_spawn(["find","/root"], {
 	    name => 'test find',
@@ -69,7 +67,6 @@ sub with_captured_log {
 
 # sub test_should_error_stdout_when_status_not_zero : Tests {
     my $cwd = POSIX::getcwd;
-    # my
     $log = with_captured_log(sub {
 	eval {
 	    with_logging_spawn(["find","/root",$cwd], {
@@ -77,13 +74,12 @@ sub with_captured_log {
 			       });
 	};
 				});
-    like($log, qr|ERROR: test find: $cwd|);
+    like($log, qr|ERROR: test find: FAILED status 1|);
+    like($log, qr|ERROR: test find: stdout: $cwd|);
 # }
 
 # sub test_should_error_stderr_when_status_not_zero : Tests {
-    # my
     $cwd = POSIX::getcwd;
-    # my
     $log = with_captured_log(sub {
 	eval {
 	    with_logging_spawn(["find","/root",$cwd], {
@@ -94,11 +90,21 @@ sub with_captured_log {
     like($log, qr|ERROR: test find: .* Permission denied|);
 # }
 
+# sub test_should_log_other_programs_log_file_if_given : Tests {
+    $cwd = POSIX::getcwd;
+    $log = with_captured_log(sub {
+	eval {
+	    with_logging_spawn(["find","/root",$cwd], {
+		name => 'test find',
+		log => '/find/does/not/really/have/a.log',
+			       });
+	};
+				});
+    like($log, qr|consult its log file \[/find/does/not/really/have/a.log\]|);
+# }
 
 # sub test_should_die_when_status_not_zero : Tests {
-    # my
     $cwd = POSIX::getcwd;
-    # my
     $log = with_captured_log(sub {
 	eval {
 	    with_logging_spawn(["find","/root",$cwd], {
@@ -110,7 +116,6 @@ sub with_captured_log {
 # }
 
 # sub test_should_return_child_hash : Tests {
-    # my
     $log = with_captured_log(sub {
 	my $child = with_logging_spawn(["echo","hello","world"], {
 	    name => 'test echo',
@@ -126,7 +131,6 @@ sub with_captured_log {
 # }
 
 # sub test_should_return_child_hash_nonzero_okay : Tests {
-    # my
     $log = with_captured_log(sub {
 	my $child = with_logging_spawn(["false"], {
 	    name => 'test false',
