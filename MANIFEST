@@ -11,6 +11,7 @@ t/01-change_account.t
 t/01-ensure_directories_exist.t
 t/01-file_contents.t
 t/01-shell_quote.t
+t/01-strip.t
 t/01-with_temp.t
 t/01-wrap_ssh.t
 t/01-wrap_sudo.t
