@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.11
+Version 1.12
 
 =cut
 
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 
 =head1 SYNOPSIS
 
@@ -69,6 +69,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	with_timeout_spawn_child
 	spawn
 	spawn_bang
+        strip
 	wrap_ssh
 	wrap_sudo
 )]);
@@ -510,6 +511,23 @@ sub shell_quote {
     } else {
 	'';
     }
+}
+
+=head2 strip
+
+Library function to strip leading and trailing whitespace from a string.
+
+Returns undef when passed undefined value.
+
+=cut
+
+sub strip {
+    my ($string) = @_;
+    if(defined($string)) {
+	$string =~ s/^\s+//;
+	$string =~ s/\s+$//;
+    }
+    return $string;
 }
 
 =head2 spawn
