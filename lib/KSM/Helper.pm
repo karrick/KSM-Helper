@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.12
+Version 1.13
 
 =cut
 
-our $VERSION = '1.12';
+our $VERSION = '1.13';
 
 =head1 SYNOPSIS
 
@@ -233,12 +233,14 @@ Returns string containing contents of F<filename>.
 
     C<< my $some_data = file_contents($some_file); >>
 
+Opens and reads the file assuming UTF-8 content.
+
 =cut
 
 sub file_contents {
     my ($filename) = @_;
     local $/;
-    open(FH, '<', $filename)
+    open(FH, '<:encoding(UTF-8)', $filename)
 	or croak sprintf("unable to open file %s: %s", $filename, $!);
     <FH>;
 }
@@ -767,7 +769,7 @@ sub with_lock {
 	croak("argument ought to be function");
     }
     verbose("getting exclusive lock: [%s]", $filename);
-    open(FILE, '<', $filename) or croak error('unable to open: [%s]: %s',$filename, $!);
+    open(FILE, '<:encoding(UTF-8)', $filename) or croak error('unable to open: [%s]: %s',$filename, $!);
     flock(FILE, LOCK_EX | LOCK_NB) or croak error('unable to lock: [%s]: %s',$filename, $!);
     verbose("have exclusive lock: [%s]", $filename);
     $result = eval { &{$function}() };

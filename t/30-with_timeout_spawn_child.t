@@ -12,6 +12,7 @@ use Test::More;
 
 ########################################
 
+use Capture::Tiny qw(capture);
 use KSM::Logger qw(:all);
 use KSM::Helper qw(:all);
 
@@ -130,21 +131,25 @@ sub ensure_child_return_sanity {
 ########################################
 # croaks and logs if unable to exec program
 
-$log = with_captured_log(
-    sub {
-	no warnings;
-	my $name = 'invalid-tester';
-	my $list = ['ignore-cant-exec-warning'];
-	my $child = with_timeout_spawn_child({name => $name, list => $list});
-	# The child process will attempt to exec and die.  parent will
-	# only know by fetching the status code; the child die will
-	# not come back to here.
-	ensure_child_return_sanity($child);
-	isnt($child->{status}, 0, "should have failed status");
-    });
-like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
-like($log, qr/ERROR: unable to exec \(invalid-tester\): \(ignore-cant-exec-warning\): No such file or directory/);
-like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
+my ($stdout,$stderr,@result) = capture {
+    $log = with_captured_log(
+        sub {
+            no warnings;
+            my $name = 'invalid-tester';
+            my $list = ['ignore-cant-exec-warning'];
+            my $child = with_timeout_spawn_child({name => $name, list => $list});
+            # The child process will attempt to exec and die.  parent will
+            # only know by fetching the status code; the child die will
+            # not come back to here.
+            ensure_child_return_sanity($child);
+            isnt($child->{status}, 0, "should have failed status");
+        });
+    like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
+    like($log, qr/ERROR: unable to exec \(invalid-tester\): \(ignore-cant-exec-warning\): No such file or directory/);
+    like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
+};
+like($stderr, qr|No such file or directory|);
+is($stdout, "");
 
 ########################################
 # logs and detects result of failed child program (/bin/false)

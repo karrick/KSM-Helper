@@ -12,6 +12,7 @@ END { Test::Class->runtests }
 
 ########################################
 
+use Capture::Tiny qw(capture);
 use KSM::Logger ':all';
 use KSM::Helper ':all';
 
@@ -49,18 +50,26 @@ sub test_returns_result_of_function : Tests {
 }
 
 sub test_croaks_if_unable_to_open : Tests {
-    eval {
-	with_lock("/root/does/not/exist",
-			 sub {
-			     1;
-			 });
+    my ($stdout,$stderr,@result) = capture {
+        eval {
+            with_lock("/root/does/not/exist",
+                      sub {
+                          1;
+                      });
+        };
+        like($@, qr/^unable to open/);
     };
-    like($@, qr/^unable to open/);
+    like($stderr, qr|unable to open|);
+    is($stdout, "");
 }
 
 sub test_croaks_when_second_argument_not_function : Tests {
-    eval { with_lock(__FILE__, "something not a function") };
-    like($@, qr/ought to be function/);
+    my ($stdout,$stderr,@result) = capture {
+        eval { with_lock(__FILE__, "something not a function") };
+        like($@, qr/ought to be function/);
+    };
+    is($stderr, "");
+    is($stdout, "");
 }
 
 sub test_logs_actions_when_called_function_succeeds : Tests {
