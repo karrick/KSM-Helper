@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.13
+Version 1.14
 
 =cut
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 =head1 SYNOPSIS
 
@@ -60,6 +60,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	find_all
 	find_first
 	shell_quote
+        split_lines_and_prune_comments
 	with_cwd
 	with_lock
 	with_locked_file
@@ -513,6 +514,19 @@ sub shell_quote {
     } else {
 	'';
     }
+}
+
+=head2 split_lines_and_prune_comments
+
+Split content string into array of lines, and strip off comments and
+eliminate empty lines.
+
+=cut
+
+sub split_lines_and_prune_comments {
+    my ($contents) = @_;
+    find_all([map { my ($data,$comment) = split(/#/); $data; } split(/\n/, $contents)],
+                  sub { $_ });
 }
 
 =head2 strip
