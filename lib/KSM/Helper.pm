@@ -20,11 +20,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.14
+Version 1.15
 
 =cut
 
-our $VERSION = '1.14';
+our $VERSION = '1.15';
 
 =head1 SYNOPSIS
 
@@ -212,7 +212,7 @@ sub equals {
 		    } elsif(ref($first) eq 'CODE') {
 			equals(&$first,&$second);
 		    } else {
-			die sprintf("do not know how to compare [%s] references", ref($first));
+			croak sprintf("do not know how to compare [%s] references\n", ref($first));
 		    }
 		}
 	    } else {
@@ -242,7 +242,7 @@ sub file_contents {
     my ($filename) = @_;
     local $/;
     open(FH, '<:encoding(UTF-8)', $filename)
-	or croak sprintf("unable to open file %s: %s", $filename, $!);
+	or croak sprintf("unable to open file %s: %s\n", $filename, $!);
     <FH>;
 }
 
@@ -387,13 +387,15 @@ sub directory_contents {
     $dir ||= '.';
     my $files = [];
     eval {
-	opendir(DH, $dir) or die("cannot opendir: $!");
+	opendir(DH, $dir) or die sprintf("cannot opendir: %s\n",$!);
 	foreach (readdir DH) {
 	    push(@$files,$_) unless /^\.{1,2}$/;
 	}
 	closedir DH;
     };
-    croak("unable to read directory_contents [$dir]: $!") if($@);
+    if(my $status = $@) {
+        croak sprintf("unable to read directory_contents [%s]: %s\n", $dir, $status);
+    }
     $files;
 }
 
@@ -416,9 +418,9 @@ sub ensure_directories_exist {
 	# NOTE: mkpath croaks if error
 	File::Path::mkpath(File::Basename::dirname($filename));
     };
-    if($@) {
-	croak sprintf("unable to ensure_directories_exist for [%s]: %s",
-		      $filename, $@);
+    if(my $status = $@) {
+        croak sprintf("unable to ensure_directories_exist for [%s]: %s\n",
+                      $filename, $status);
     }
     $filename;
 }
@@ -526,7 +528,7 @@ eliminate empty lines.
 sub split_lines_and_prune_comments {
     my ($contents) = @_;
     find_all([map { my ($data,$comment) = split(/#/); $data; } split(/\n/, $contents)],
-                  sub { $_ });
+             sub { $_ });
 }
 
 =head2 strip
@@ -580,7 +582,7 @@ instead look for I<the file> 'C<*.msg>', with an asterisk in its name.
 
 sub spawn {
     my($list,$options)=@_;
-    croak("list must be array\n")   unless ref($list) eq 'ARRAY';
+    croak("list must be array") unless ref($list) eq 'ARRAY';
     if(defined($options) && ref($options) ne 'HASH') {
 	croak("options must be hash");
     }
@@ -621,7 +623,7 @@ sub spawn {
 	    exit 1 if(!exec @$list);
 	    # NOTREACHED
 	} else {
-	    die sprintf("unable to fork: %s", $!);
+	    die sprintf("unable to fork: %s\n", $!);
 	}
 					   });
     # merge pertinent result hash values into child
@@ -653,15 +655,16 @@ code, B<spawn_bang> might be useful.
 
 sub spawn_bang {
     my($list,$options)=@_;
-    croak("list must be array\n")   unless ref($list) eq 'ARRAY';
+    croak("list must be array") unless ref($list) eq 'ARRAY';
     if(defined($options) && ref($options) ne 'HASH') {
 	croak("options must be hash");
     }
     my $child = spawn($list,$options);
     if($child->{exception}) {
-	die($child->{exception});
+	die sprintf("%s\n", $child->{exception});
     } elsif($child->{status}) {
-	die sprintf("child (%s) status %d", (defined($options->{name}) ? $options->{name} : "unknown"), $child->{status});
+	die sprintf("child (%s) status %d\n",
+                    (defined($options->{name}) ? $options->{name} : "unknown"), $child->{status});
     }
     $child;
 }
@@ -674,10 +677,10 @@ Execute I<list>, routing C<STDOUT> and C<STDERR> to log facility.
 
 sub with_logging_spawn {
     my ($list,$options) = @_;
-    croak("ought to pass in list\n") if(ref($list) ne 'ARRAY');
-    croak("options ought to be hash\n") if(ref($options) ne 'HASH');
-    croak("options ought to have name key\n") if(!defined($options->{name}));
-    croak("option logger ought to be CODE\n") if(defined($options->{logger}) && ref($options->{logger}) ne 'CODE');
+    croak("ought to pass in list") if(ref($list) ne 'ARRAY');
+    croak("options ought to be hash") if(ref($options) ne 'HASH');
+    croak("options ought to have name key") if(!defined($options->{name}));
+    croak("option logger ought to be CODE") if(defined($options->{logger}) && ref($options->{logger}) ne 'CODE');
 
     my $logger = $options->{logger} || \&KSM::Logger::verbose;
     my $joined = join(' ',@$list);
@@ -733,27 +736,27 @@ sub with_cwd {
 	croak("argument ought to be function");
     }
     eval {
-    chdir($new_dir)
-	or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
+        chdir($new_dir)
+            or croak warning("unable to change directory [%s]: %s\n", $new_dir, $!);
     };
     if($@) {
 	my $status = $@;
 	if($status =~ /No such file or directory/) {
 	    File::Path::mkpath($new_dir);
 	    chdir($new_dir)
-		or croak warning("unable to change directory [%s]: %s", $new_dir, $!);
+		or croak warning("unable to change directory [%s]: %s\n", $new_dir, $!);
 	} else {
-	    croak $status;
+	    croak sprintf("%s\n", $status);
 	}
     }
     verbose("cwd: [%s]", $new_dir);
     $result = eval { &{$function}() };
     $status = $@;
     chdir($old_dir)
-	or croak error("unable to return to previous directory [%s]: %s",
+	or croak error("unable to return to previous directory [%s]: %s\n",
 		       $old_dir, $!);
     verbose("cwd: [%s]", $old_dir);
-    croak($status) if $status;
+    croak sprintf("%s\n", $status) if $status;
     $result;
 }
 
@@ -779,18 +782,16 @@ This function will croak if another process has a lock on F<filename>.
 sub with_lock {
     my ($filename,$function) = @_;
     my ($result,$status);
-    if(ref($function) ne 'CODE') {
-	croak("argument ought to be function");
-    }
+    croak("argument ought to be function") if(ref($function) ne 'CODE');
     verbose("getting exclusive lock: [%s]", $filename);
-    open(FILE, '<:encoding(UTF-8)', $filename) or croak error('unable to open: [%s]: %s',$filename, $!);
-    flock(FILE, LOCK_EX | LOCK_NB) or croak error('unable to lock: [%s]: %s',$filename, $!);
+    open(FILE, '<:encoding(UTF-8)', $filename) or croak error("unable to open: [%s]: %s\n",$filename,$!);
+    flock(FILE, LOCK_EX | LOCK_NB) or croak error("unable to lock: [%s]: %s\n",$filename,$!);
     verbose("have exclusive lock: [%s]", $filename);
-    $result = eval { &{$function}() };
+    $result = eval {$function->()};
     $status = $@;
-    close(FILE) or croak error("unable to close: [%s]: %s",$filename, $!);
+    close(FILE) or croak error("unable to close: [%s]: %s\n",$filename, $!);
     verbose("released exclusive lock: [%s]", $filename);
-    croak($status) if($status);
+    croak sprintf("%s\n", $status) if($status);
     $result;
 }
 
@@ -838,35 +839,35 @@ die:
 
 sub with_standard_redirection {
     my ($options,$function) = @_;
-    croak("options must be hash")  unless ref($options) eq 'HASH';
+    croak("options must be hash") unless ref($options) eq 'HASH';
     croak("function must be code") unless ref($function) eq 'CODE';
 
     my $result = {};
-    open(my $stdin_saved, "<&STDIN")   or die "unable to dup STDIN";
-    open(my $stdout_saved, ">&STDOUT") or die "unable to dup STDOUT";
-    open(my $stderr_saved, ">&STDERR") or die "unable to dup STDERR";
+    open(my $stdin_saved, "<&STDIN")   or die "unable to dup STDIN\n";
+    open(my $stdout_saved, ">&STDOUT") or die "unable to dup STDOUT\n";
+    open(my $stderr_saved, ">&STDERR") or die "unable to dup STDERR\n";
     with_temp(
 	sub {
 	    my ($stdin_fh, $stdin_temp) = @_;
 	    if(defined($options->{stdin})) {
 		open(FH,'>',$stdin_temp)
-		    or die sprintf("unable to open > [%s]: %s", $stdin_temp, $!);
+		    or die sprintf("unable to open > [%s]: %s\n", $stdin_temp, $!);
 		printf FH "%s", $options->{stdin};
 		close FH;
 		open(STDIN,"<&",$stdin_fh)
-		    or die sprintf("unable to redirect STDIN: %s", $!);
+		    or die sprintf("unable to redirect STDIN: %s\n", $!);
 	    }
 	    with_temp(
 		sub {
 		    my ($stderr_fh, $stderr_temp) = @_;
 		    open(STDERR,">&",$stderr_fh)
-			or die sprintf("unable to reopen STDERR: %s", $!);
+			or die sprintf("unable to reopen STDERR: %s\n", $!);
 		    select((select(STDERR), $| = 1)[0]); # autoflush
 		    with_temp(
 			sub {
 			    my ($stdout_fh, $stdout_temp) = @_;
 			    open(STDOUT,">&",$stdout_fh)
-				or die sprintf("unable to reopen STDOUT: %s", $!);
+				or die sprintf("unable to reopen STDOUT: %s\n", $!);
 			    select((select(STDOUT), $| = 1)[0]); # autoflush
 			    $result->{value} = eval { &{$function}() };
 			    $result->{exception} = $@;
@@ -875,9 +876,9 @@ sub with_standard_redirection {
 		    $result->{stderr} = file_contents($stderr_temp);
 		});
 	});
-    open(STDIN, "<&", $stdin_saved)   or die "unable to restore STDIN";
-    open(STDOUT, ">&", $stdout_saved) or die "unable to restore STDOUT";
-    open(STDERR, ">&", $stderr_saved) or die "unable to restore STDERR";
+    open(STDIN, "<&", $stdin_saved)   or die "unable to restore STDIN\n";
+    open(STDOUT, ">&", $stdout_saved) or die "unable to restore STDOUT\n";
+    open(STDERR, ">&", $stderr_saved) or die "unable to restore STDERR\n";
     $result;
 }
 
@@ -904,9 +905,7 @@ mischiefous programs.  The file name is also provided.
 sub with_temp {
     my ($function) = @_;
     my ($result,$status);
-    if(ref($function) ne 'CODE') {
-	croak("argument ought to be function");
-    }
+    croak("argument ought to be function") if(ref($function) ne 'CODE');
     my ($fh,$fname) = File::Temp::tempfile();
     $result = eval {&{$function}($fh,$fname)};
     $status = $@;
@@ -916,7 +915,7 @@ sub with_temp {
 	close($fh) if(tell($fh) != -1);
     }
     unlink($fname);
-    croak($status) if($status);
+    croak sprintf("%s\n", $status) if($status);
     $result;
 }
 
@@ -936,9 +935,9 @@ sub with_timeout {
     my ($emsg,$timeout,$function) = @_;
     my $result;
 
-    local $SIG{ALRM} = sub {croak $emsg};
+    local $SIG{ALRM} = sub {croak sprintf("%s\n", $emsg)};
     alarm $timeout;
-    $result = &{$function}();
+    $result = $function->();
     alarm 0;
     $result;
 }
@@ -1029,7 +1028,7 @@ sub with_timeout_spawn_child {
 		}
 	    }
 	} else {
-	    die error("unable to fork: %s", $!);
+	    die error("unable to fork: %s\n", $!);
 	}
     };
     $result;
