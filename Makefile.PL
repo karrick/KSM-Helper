@@ -12,11 +12,11 @@ WriteMakefile(
       : ()),
     PL_FILES            => {},
     BUILD_REQUIRES => {
-	'Test::Class' => 0,
+	'Capture::Tiny' => 0.17,
+	'Test::Class' => 0.35,
         'Test::More' => 0,
     },
     PREREQ_PM => {
-	'Capture::Tiny' => 0,
 	'KSM::Logger' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
@@ -27,7 +27,7 @@ sub MY::postamble {
     my $postamble = <<'MAKE_FRAG';
 .PHONY: rpm
 
-rpm:	test dist
+rpm:	dist
 	cpan2rpm --no-sign $(DISTVNAME).tar.$(SUFFIX)
 MAKE_FRAG
 

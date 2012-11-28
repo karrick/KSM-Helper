@@ -129,7 +129,7 @@ sub ensure_child_return_sanity {
 }
 
 ########################################
-# croaks and logs if unable to exec program
+# croaks and logs if cannot exec program
 
 my ($stdout,$stderr,@result) = capture {
     $log = with_captured_log(
@@ -145,7 +145,7 @@ my ($stdout,$stderr,@result) = capture {
             isnt($child->{status}, 0, "should have failed status");
         });
     like($log, qr/INFO: spawned child \d+ \(invalid-tester\)/);
-    like($log, qr/ERROR: unable to exec \(invalid-tester\): \(ignore-cant-exec-warning\): No such file or directory/);
+    like($log, qr/ERROR: cannot exec \(invalid-tester\): \(ignore-cant-exec-warning\): \[No such file or directory\]/);
     like($log, qr/WARNING: child \d+ \(invalid-tester\) terminated status code 1/);
 };
 like($stderr, qr|No such file or directory|);
@@ -297,12 +297,12 @@ sub run_signal_test {
 		with_timeout_spawn_child($child);
 		exit;
 	    } else {
-		fail sprintf("unable to fork: %s", $!);
+		fail sprintf("cannot fork: %s", $!);
 	    }
 	});
 
     is_deeply($SIG{$signal}, $handler, sprintf("should have restored %s signal handler", $signal));
-    unlike($log, qr/unable to fork/);
+    unlike($log, qr/cannot fork/);
     like($log, qr/INFO: spawned child \d+ \(${signal}-tester\)/);
     if($signal_should_kill) {
     	unlike($log, qr/INFO: pid \d+ received $signal signal/);

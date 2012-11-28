@@ -8,7 +8,7 @@ lib/KSM/Helper.pm
 t/00-load.t
 t/01-any-all.t
 t/01-change_account.t
-t/01-ensure_directories_exist.t
+t/01-directories.t
 t/01-file_contents.t
 t/01-shell_quote.t
 t/01-split_lines_and_prune_comments.t
@@ -28,6 +28,7 @@ t/10-with_timeout.t
 t/20-spawning.t
 t/25-with_logging_spawn.t
 t/30-with_timeout_spawn_child.t
+t/fixtures/hello.txt
 t/boilerplate.t
 t/manifest.t
 t/pod-coverage.t

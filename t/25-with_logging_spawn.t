@@ -111,7 +111,7 @@ sub with_captured_log {
 		name => 'test find',
 			       });
 	};
-	like($@, qr|unable to test find: .* command = \[find /root .*\]|);
+	like($@, qr|cannot test find: .* command = \[find /root .*\]|);
 				});
 # }
 

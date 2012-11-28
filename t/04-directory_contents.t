@@ -37,7 +37,7 @@ sub chdir_to_test_data_directory : Tests(setup) {
     for(my $index = 0; $index < TEST_DIR_COUNT; $index++) {
     	$test_file = sprintf($template, $self->{destination}, "", $index);
     	open(FILE, '>', $test_file)
-    	    or fail sprintf('unable to create temp file: [%s]: %s', $test_file, $!);
+    	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
     	print FILE sprintf("I can count to %d!\n", $index);
     	close FILE;
     }
@@ -46,7 +46,7 @@ sub chdir_to_test_data_directory : Tests(setup) {
     for(my $index = 0; $index < TEST_DOT_COUNT; $index++) {
     	$test_file = sprintf($template, $self->{destination}, ".", $index);
     	open(FILE, '>', $test_file)
-    	    or fail sprintf('unable to create temp file: [%s]: %s', $test_file, $!);
+    	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
     	print FILE sprintf("I can count to %d!\n", $index);
     	close FILE;
     }

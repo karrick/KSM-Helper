@@ -57,9 +57,9 @@ sub test_croaks_if_unable_to_open : Tests {
                           1;
                       });
         };
-        like($@, qr/^unable to open/);
+        like($@, qr/^cannot open/);
     };
-    like($stderr, qr|unable to open|);
+    like($stderr, qr|cannot open|);
     is($stdout, "");
 }
 

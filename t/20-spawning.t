@@ -75,7 +75,7 @@ sub test_reaper {
 	fail("should not be here");
 	exit;
     } else {
-    	fail sprintf("unable to fork: %s", $!);
+    	fail sprintf("cannot fork: %s", $!);
     }
 }
 
@@ -165,7 +165,7 @@ sub test_timeout_child_sends_the_term_signal_and_logs_event {
 	fail("should not be here");
 	exit;
     } else {
-	fail sprintf("unable to fork: %s", $!);
+	fail sprintf("cannot fork: %s", $!);
     }
 }
 

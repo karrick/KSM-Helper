@@ -111,12 +111,12 @@ sub test_with_locked_file_dies_if_unable_to_open : Tests {
                                      1;
                                  });
             };
-            like($@, qr/^unable to open/);
+            like($@, qr/^cannot open/);
         };
         
         unlink($file) if -e $file;
     };
-    like($stderr, qr|unable to open|);
+    like($stderr, qr|cannot open|);
     is($stdout, "");
 }
 
@@ -126,20 +126,20 @@ sub test_with_locked_file_dies_if_already_locked : Tests {
         eval {
             chomp($file = `mktemp`);
             open(FILE, '<', $file)
-                or fail sprintf('unable to open: [%s]: %s', $file, $!);
+                or fail sprintf('cannot open: [%s]: %s', $file, $!);
             flock(FILE, LOCK_EX | LOCK_NB)
-                or fail sprintf('unable to lock: [%s]: %s', $file, $!);
+                or fail sprintf('cannot lock: [%s]: %s', $file, $!);
             eval {
                 with_locked_file($file,
                                  sub {
                                      1;
                                  });
             };
-            like($@, qr/^unable to lock/);
+            like($@, qr/^cannot lock/);
         };
         
         unlink($file);
     };
-    like($stderr, qr|unable to lock|);
+    like($stderr, qr|cannot lock|);
     is($stdout, "");
 }

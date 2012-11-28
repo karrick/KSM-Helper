@@ -4,7 +4,6 @@ use utf8;
 use strict;
 use warnings;
 
-use Capture::Tiny qw(capture);
 use Carp;
 use Fcntl qw(:flock);
 use File::Basename ();
@@ -20,11 +19,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.15
+Version 1.16
 
 =cut
 
-our $VERSION = '1.15';
+our $VERSION = '1.16';
 
 =head1 SYNOPSIS
 
@@ -53,9 +52,13 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	any
 	change_account
 	directory_contents
+        create_required_parent_directories
 	ensure_directories_exist
+	ensure_directory_exists
 	equals
 	file_contents
+	file_read
+	file_write
 	find
 	find_all
 	find_first
@@ -230,6 +233,10 @@ sub equals {
 
 =head2 file_contents
 
+DEPRECATED -- Please consider using B<file_read>, for example:
+
+    C<< my $some_data = file_read($some_file); >>
+
 Returns string containing contents of F<filename>.
 
     C<< my $some_data = file_contents($some_file); >>
@@ -239,11 +246,57 @@ Opens and reads the file assuming UTF-8 content.
 =cut
 
 sub file_contents {
+    file_read(shift);
+}
+
+=head2 file_read
+
+Returns string containing contents of F<filename>.
+
+    C<< my $some_data = file_read($some_file); >>
+
+Opens and reads the file assuming UTF-8 content.
+
+=cut
+
+sub file_read {
     my ($filename) = @_;
     local $/;
     open(FH, '<:encoding(UTF-8)', $filename)
-	or croak sprintf("unable to open file %s: %s\n", $filename, $!);
+	or croak sprintf("cannot open file (%s): [%s]\n", $filename, $!);
+    # flock(FH, LOCK_SH)
+    # 	or croak sprintf("cannot lock (%s): [%s]\n", $filename, $!);
     <FH>;
+}
+
+=head2 file_write
+
+Returns string containing contents of F<filename>.
+
+    C<< file_write($some_file,$blob); >>
+
+Opens and writes the file assuming UTF-8 content. Value of function is
+the value of the data written.
+
+=cut
+
+sub file_write {
+    my ($filename,$blob) = @_;
+    my $dirname = File::Basename::dirname($filename);
+    my $basename = File::Basename::basename($filename);
+    my $tempname = sprintf("%s/.%s", $dirname, $basename);
+
+    create_required_parent_directories($tempname);
+    open(FH, '>:encoding(UTF-8)', $tempname)
+    	or croak sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
+    flock(FH, LOCK_EX)
+    	or croak sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
+    print FH $blob;
+    close FH;
+    rename($tempname, $filename)
+    	or croak sprintf("cannot rename file (%s) -> (%s): [%s]\n",
+    			 $tempname, $filename, $!);
+    $blob;
 }
 
 =head2 find
@@ -387,19 +440,33 @@ sub directory_contents {
     $dir ||= '.';
     my $files = [];
     eval {
-	opendir(DH, $dir) or die sprintf("cannot opendir: %s\n",$!);
+	opendir(DH, $dir) or die sprintf("cannot opendir: [%s]\n", $!);
 	foreach (readdir DH) {
-	    push(@$files,$_) unless /^\.{1,2}$/;
+	    push(@$files, $_) unless /^\.{1,2}$/;
 	}
 	closedir DH;
     };
-    if(my $status = $@) {
-        croak sprintf("unable to read directory_contents [%s]: %s\n", $dir, $status);
+    if(chomp(my $status = $@)) {
+        croak sprintf("cannot read directory_contents (%s): [%s]\n", $dir, $status);
     }
     $files;
 }
 
+=head2 create_required_parent_directories
+
+Create any parent directories required for file.
+
+=cut
+
+sub create_required_parent_directories {
+    my ($filename) = @_;
+    ensure_directory_exists(File::Basename::dirname($filename));
+    $filename;
+}
+
 =head2 ensure_directories_exist
+
+DEPRECATED -- Please consider using B<create_required_parent_directories>.
 
 Takes and returns I<filename>, but creates the directory of
 I<filename> if it does not exist if necessary.
@@ -418,11 +485,37 @@ sub ensure_directories_exist {
 	# NOTE: mkpath croaks if error
 	File::Path::mkpath(File::Basename::dirname($filename));
     };
-    if(my $status = $@) {
-        croak sprintf("unable to ensure_directories_exist for [%s]: %s\n",
+    if(chomp(my $status = $@)) {
+        croak sprintf("cannot ensure_directories_exist (%s): [%s]\n",
                       $filename, $status);
     }
     $filename;
+}
+
+=head2 ensure_directory_exists
+
+Takes and returns I<dirname>, but creates all required parent
+directories of I<dirname> in addition to I<dirname> if any do not
+already exist.
+
+It will croak if permissions are inadequate to create the required
+directories.
+
+    C<< opendir(DH, ensure_directory_exists($queue)) >>
+    C<<     or croak sprintf("cannot opendir (%s): [%s]\n", $!); >>
+
+=cut
+
+sub ensure_directory_exists {
+    my ($dirname) = @_;
+    eval {
+	File::Path::mkpath($dirname); # NOTE: mkpath croaks if error
+    };
+    if(chomp(my $status = $@)) {
+        croak sprintf("cannot ensure_directory_exists (%s): [%s]\n",
+                      $dirname, $status);
+    }
+    $dirname;
 }
 
 =head2 change_account
@@ -623,7 +716,7 @@ sub spawn {
 	    exit 1 if(!exec @$list);
 	    # NOTREACHED
 	} else {
-	    die sprintf("unable to fork: %s\n", $!);
+	    die sprintf("cannot fork: [%s]\n", $!);
 	}
 					   });
     # merge pertinent result hash values into child
@@ -686,9 +779,9 @@ sub with_logging_spawn {
     my $joined = join(' ',@$list);
 
     if($options->{log_command_line}) {
-	&{$logger}("%s: [%s]", $options->{name}, $joined);
+	$logger->("%s: [%s]", $options->{name}, $joined);
     } else {
-	&{$logger}("%s", $options->{name});
+	$logger->("%s", $options->{name});
     }
 
     my $child = spawn($list, $options);
@@ -705,7 +798,7 @@ sub with_logging_spawn {
 	foreach my $stream (qw(stdout stderr)) {
 	    foreach (split(/\n/, $child->{$stream})) {error("%s: %s: %s", $options->{name}, $stream, $_)}
 	}
-	die error("unable to %s: (exit code: %d) command = [%s]\n",
+	die error("cannot %s: (exit code: %d) command = [%s]\n",
 		  $options->{name}, $child->{status}, $joined);
     }
     $child;
@@ -737,23 +830,22 @@ sub with_cwd {
     }
     eval {
         chdir($new_dir)
-            or croak warning("unable to change directory [%s]: %s\n", $new_dir, $!);
+            or croak warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
     };
-    if($@) {
-	my $status = $@;
+    if(chomp(my $status = $@)) {
 	if($status =~ /No such file or directory/) {
 	    File::Path::mkpath($new_dir);
 	    chdir($new_dir)
-		or croak warning("unable to change directory [%s]: %s\n", $new_dir, $!);
+		or croak warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
 	} else {
 	    croak sprintf("%s\n", $status);
 	}
     }
     verbose("cwd: [%s]", $new_dir);
-    $result = eval { &{$function}() };
-    $status = $@;
+    $result = eval {$function->()};
+    chomp($status = $@);
     chdir($old_dir)
-	or croak error("unable to return to previous directory [%s]: %s\n",
+	or croak error("cannot return to previous directory [%s]: %s\n",
 		       $old_dir, $!);
     verbose("cwd: [%s]", $old_dir);
     croak sprintf("%s\n", $status) if $status;
@@ -784,12 +876,12 @@ sub with_lock {
     my ($result,$status);
     croak("argument ought to be function") if(ref($function) ne 'CODE');
     verbose("getting exclusive lock: [%s]", $filename);
-    open(FILE, '<:encoding(UTF-8)', $filename) or croak error("unable to open: [%s]: %s\n",$filename,$!);
-    flock(FILE, LOCK_EX | LOCK_NB) or croak error("unable to lock: [%s]: %s\n",$filename,$!);
+    open(FILE, '<:encoding(UTF-8)', $filename) or croak error("cannot open (%s): [%s]\n", $filename, $!);
+    flock(FILE, LOCK_EX | LOCK_NB) or croak error("cannot lock (%s): [%s]\n", $filename, $!);
     verbose("have exclusive lock: [%s]", $filename);
     $result = eval {$function->()};
-    $status = $@;
-    close(FILE) or croak error("unable to close: [%s]: %s\n",$filename, $!);
+    chomp($status = $@);
+    close(FILE) or croak error("cannot close (%s): [%s]\n", $filename, $!);
     verbose("released exclusive lock: [%s]", $filename);
     croak sprintf("%s\n", $status) if($status);
     $result;
@@ -843,42 +935,42 @@ sub with_standard_redirection {
     croak("function must be code") unless ref($function) eq 'CODE';
 
     my $result = {};
-    open(my $stdin_saved, "<&STDIN")   or die "unable to dup STDIN\n";
-    open(my $stdout_saved, ">&STDOUT") or die "unable to dup STDOUT\n";
-    open(my $stderr_saved, ">&STDERR") or die "unable to dup STDERR\n";
+    open(my $stdin_saved, "<&STDIN")   or die "cannot dup STDIN\n";
+    open(my $stdout_saved, ">&STDOUT") or die "cannot dup STDOUT\n";
+    open(my $stderr_saved, ">&STDERR") or die "cannot dup STDERR\n";
     with_temp(
 	sub {
 	    my ($stdin_fh, $stdin_temp) = @_;
 	    if(defined($options->{stdin})) {
 		open(FH,'>',$stdin_temp)
-		    or die sprintf("unable to open > [%s]: %s\n", $stdin_temp, $!);
-		printf FH "%s", $options->{stdin};
+		    or die sprintf("cannot open > (%s): [%s]\n", $stdin_temp, $!);
+		print FH $options->{stdin};
 		close FH;
 		open(STDIN,"<&",$stdin_fh)
-		    or die sprintf("unable to redirect STDIN: %s\n", $!);
+		    or die sprintf("cannot redirect STDIN: [%s]\n", $!);
 	    }
 	    with_temp(
 		sub {
 		    my ($stderr_fh, $stderr_temp) = @_;
 		    open(STDERR,">&",$stderr_fh)
-			or die sprintf("unable to reopen STDERR: %s\n", $!);
+			or die sprintf("cannot reopen STDERR: [%s]\n", $!);
 		    select((select(STDERR), $| = 1)[0]); # autoflush
 		    with_temp(
 			sub {
 			    my ($stdout_fh, $stdout_temp) = @_;
 			    open(STDOUT,">&",$stdout_fh)
-				or die sprintf("unable to reopen STDOUT: %s\n", $!);
+				or die sprintf("cannot reopen STDOUT: [%s]\n", $!);
 			    select((select(STDOUT), $| = 1)[0]); # autoflush
-			    $result->{value} = eval { &{$function}() };
-			    $result->{exception} = $@;
-			    $result->{stdout} = file_contents($stdout_temp);
+			    $result->{value} = eval {$function->()};
+			    chomp($result->{exception} = $@);
+			    $result->{stdout} = file_read($stdout_temp);
 			});
-		    $result->{stderr} = file_contents($stderr_temp);
+		    $result->{stderr} = file_read($stderr_temp);
 		});
 	});
-    open(STDIN, "<&", $stdin_saved)   or die "unable to restore STDIN\n";
-    open(STDOUT, ">&", $stdout_saved) or die "unable to restore STDOUT\n";
-    open(STDERR, ">&", $stderr_saved) or die "unable to restore STDERR\n";
+    open(STDIN, "<&", $stdin_saved)   or die "cannot restore STDIN\n";
+    open(STDOUT, ">&", $stdout_saved) or die "cannot restore STDOUT\n";
+    open(STDERR, ">&", $stderr_saved) or die "cannot restore STDERR\n";
     $result;
 }
 
@@ -907,8 +999,8 @@ sub with_temp {
     my ($result,$status);
     croak("argument ought to be function") if(ref($function) ne 'CODE');
     my ($fh,$fname) = File::Temp::tempfile();
-    $result = eval {&{$function}($fh,$fname)};
-    $status = $@;
+    $result = eval {$function->($fh,$fname)};
+    chomp($status = $@);
     {
 	# localize no warnings
 	no warnings;
@@ -1015,20 +1107,20 @@ sub with_timeout_spawn_child {
 	    if($child->{function}) {
 		$0 = $child->{name};
 		eval {&{$child->{function}}()};
-		if($@) {
-		    error("%s", $@);
+		if(chomp(my $status = $@)) {
+		    error("%s", $status);
 		    exit -1;
 		}
 		exit;
 	    } elsif($child->{list}) {
 		if(!exec @{$child->{list}}) {
-		    error("unable to exec (%s): (%s): %s",
+		    error("cannot exec (%s): (%s): [%s]",
 			  $child->{name}, $child->{list}->[0], $!);
 		    exit 1;
 		}
 	    }
 	} else {
-	    die error("unable to fork: %s\n", $!);
+	    die error("cannot fork: [%s]\n", $!);
 	}
     };
     $result;

@@ -69,7 +69,7 @@ sub test_croaks_when_cannot_change_to_specified_directory : Tests {
     with_captured_log(
 	sub {
 	    eval {with_cwd('/root', sub {1})};
-	    like($@, qr/unable to change directory/);
+	    like($@, qr/cannot change directory/);
 	    like($@, qr/Permission denied/);
 	});
 }
@@ -78,7 +78,7 @@ sub test_croaks_when_cannot_create_specified_directory : Tests {
     with_captured_log(
 	sub {
 	    eval {with_cwd('/root/foo', sub {1})};
-	    like($@, qr/unable to change directory/);
+	    like($@, qr/cannot change directory/);
 	    like($@, qr/Permission denied/);
 	});
 }
@@ -97,13 +97,13 @@ sub test_logs_if_original_directory_missing_when_function_ends : Tests {
     chomp(my $other = `mktemp -d`);
     my $log = with_captured_log(
 	sub {
-	    chdir($other) or fail sprintf("unable to chdir [%s]", $other);
+	    chdir($other) or fail sprintf("cannot chdir [%s]", $other);
 	    with_cwd($self->{dir},
 		     sub {
 			 system("rm -rf $other");
 		     });
 	});
-    like($log, qr/unable to return to previous directory/);
+    like($log, qr/cannot return to previous directory/);
     like($log, qr/No such file or directory/);
 }
 
