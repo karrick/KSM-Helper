@@ -19,11 +19,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.16
+Version 1.17
 
 =cut
 
-our $VERSION = '1.16';
+our $VERSION = '1.17';
 
 =head1 SYNOPSIS
 
@@ -51,6 +51,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	all
 	any
 	change_account
+        command_loop
 	directory_contents
         create_required_parent_directories
 	ensure_directories_exist
@@ -639,6 +640,48 @@ sub strip {
 	$string =~ s/\s+$//;
     }
     return $string;
+}
+
+=head2 command_loop
+
+Read from filehandle FH, and execute PROCESS_FN for each newline
+terminated string. While processing, invoke TIMEOUT_FN if no input for
+TIMEOUT seconds.
+
+If an error occurs, logs any errors and dies with an appropriate error
+message.
+
+=cut
+
+sub command_loop {
+    my ($fh,$process_fn,$timeout_fn,$timeout) = @_;
+
+    croak("process_fn not a function") if ref($process_fn ne 'CODE');
+    croak("timeout_fn not a function") if ref($timeout_fn ne 'CODE');
+
+    my ($rout,$nfound,$result,$buffer);
+    my ($rin,$input) = ("","");
+    my $fd = fileno($fh);
+    vec($rin, $fd, 1) = 1;
+
+    while(1) {
+	if($nfound = select($rout=$rin, undef, undef, $timeout)) {
+	    if(vec($rout, $fd, 1) == 1) {
+		if(!defined($result = sysread($fh, $buffer, 512))) {
+		    die error("cannot sysread: [%s]\n", $!);
+		} elsif($result == 0) {
+		    last;
+		}		
+		$input .= $buffer;
+		if((my $np = index($input, "\n")) >= 0) {
+		    $process_fn->(substr($input, 0, $np));
+		    $input = substr($input, (1+$np));
+		}
+	    }
+	} else {
+	    $timeout_fn->();
+	}
+    }
 }
 
 =head2 spawn
