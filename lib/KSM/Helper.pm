@@ -659,7 +659,7 @@ sub command_loop {
     croak("process_fn not a function") if ref($process_fn ne 'CODE');
     croak("timeout_fn not a function") if ref($timeout_fn ne 'CODE');
 
-    my ($rout,$nfound,$result,$buffer);
+    my ($rout,$nfound,$buffer);
     my ($rin,$input) = ("","");
     my $fd = fileno($fh);
     vec($rin, $fd, 1) = 1;
@@ -667,11 +667,7 @@ sub command_loop {
     while(1) {
 	if($nfound = select($rout=$rin, undef, undef, $timeout)) {
 	    if(vec($rout, $fd, 1) == 1) {
-		if(!defined($result = sysread($fh, $buffer, 512))) {
-		    die error("cannot sysread: [%s]\n", $!);
-		} elsif($result == 0) {
-		    last;
-		}		
+		last if(!sysread($fh, $buffer, 512));
 		$input .= $buffer;
 		if((my $np = index($input, "\n")) >= 0) {
 		    $process_fn->(substr($input, 0, $np));
