@@ -27,7 +27,7 @@ sub MY::postamble {
     my $postamble = <<'MAKE_FRAG';
 .PHONY: rpm
 
-rpm:	test dist
+rpm:	dist
 	cpan2rpm --no-sign $(DISTVNAME).tar.$(SUFFIX)
 MAKE_FRAG
 
