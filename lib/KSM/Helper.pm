@@ -19,11 +19,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.17
+Version 1.18
 
 =cut
 
-our $VERSION = '1.17';
+our $VERSION = '1.18';
 
 =head1 SYNOPSIS
 
@@ -447,7 +447,8 @@ sub directory_contents {
 	}
 	closedir DH;
     };
-    if(chomp(my $status = $@)) {
+    if(my $status = $@) {
+	chomp($status);
         croak sprintf("cannot read directory_contents (%s): [%s]\n", $dir, $status);
     }
     $files;
@@ -486,7 +487,8 @@ sub ensure_directories_exist {
 	# NOTE: mkpath croaks if error
 	File::Path::mkpath(File::Basename::dirname($filename));
     };
-    if(chomp(my $status = $@)) {
+    if(my $status = $@) {
+	chomp($status);
         croak sprintf("cannot ensure_directories_exist (%s): [%s]\n",
                       $filename, $status);
     }
@@ -512,7 +514,8 @@ sub ensure_directory_exists {
     eval {
 	File::Path::mkpath($dirname); # NOTE: mkpath croaks if error
     };
-    if(chomp(my $status = $@)) {
+    if(my $status = $@) {
+	chomp($status);
         croak sprintf("cannot ensure_directory_exists (%s): [%s]\n",
                       $dirname, $status);
     }
@@ -871,7 +874,8 @@ sub with_cwd {
         chdir($new_dir)
             or croak warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
     };
-    if(chomp(my $status = $@)) {
+    if(my $status = $@) {
+	chomp($status);
 	if($status =~ /No such file or directory/) {
 	    File::Path::mkpath($new_dir);
 	    chdir($new_dir)
@@ -1035,11 +1039,11 @@ mischiefous programs.  The file name is also provided.
 
 sub with_temp {
     my ($function) = @_;
-    my ($result,$status);
+    my ($result);
     croak("argument ought to be function") if(ref($function) ne 'CODE');
     my ($fh,$fname) = File::Temp::tempfile();
     $result = eval {$function->($fh,$fname)};
-    chomp($status = $@);
+    chomp(my $status = $@);
     {
 	# localize no warnings
 	no warnings;
@@ -1146,7 +1150,8 @@ sub with_timeout_spawn_child {
 	    if($child->{function}) {
 		$0 = $child->{name};
 		eval {&{$child->{function}}()};
-		if(chomp(my $status = $@)) {
+		if(my $status = $@) {
+		    chomp($status);
 		    error("%s", $status);
 		    exit -1;
 		}
