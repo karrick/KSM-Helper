@@ -21,11 +21,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.0
+Version 2.0.1
 
 =cut
 
-our $VERSION = '2.0.0';
+our $VERSION = '2.0.1';
 
 =head1 SYNOPSIS
 
@@ -322,14 +322,24 @@ sub command_loop {
 	croak("timeout_handler not a function");
     }
 
+    my $stop = time() + $timeout;
     my ($rin,$stdout_buf) = ("","");
     my $fd = fileno($fh);
     vec($rin, $fd, 1) = 1;
 
     while(1) {
-	if(my $nfound = select(my $rout=$rin, undef, undef, $timeout)) {
+	my $nfound = select(my $rout=$rin, undef, undef, ($stop - time()));
+	if($nfound == -1) {
+	    die sprintf("cannot select: [%s]\n", $!);
+	} elsif($nfound > 0) {
 	    if(vec($rout, $fd, 1) == 1) {
-		$stdout_buf = sysread_spooler($fh, $stdout_buf, $stdout_handler);
+		eval {
+		    $stdout_buf = sysread_spooler($fh, $stdout_buf, $stdout_handler);
+		};
+		if(my $status = $@) {
+		    chomp($status);
+		    last if($status eq 'eof');
+		}
 	    }
 	} else {
 	    $timeout_handler->();
@@ -652,8 +662,11 @@ sub spawn {
 
 	    while(!defined($reaped_children->{$child->{pid}})) {
 		eval {
-		    my $timeout = (defined($options->{timeout}) ? ($child->{ended} - $child->{started}) : undef);
-		    if((my $nfound = select(my $rout=$rin, undef, undef, $timeout)) > 0) {
+		    my $timeout = (defined($options->{timeout}) ? ($child->{ended} - time()) : undef);
+		    my $nfound = select(my $rout=$rin, undef, undef, $timeout);
+		    if($nfound == -1) {
+			die sprintf("cannot select: [%s]\n", $!);
+		    } elsif($nfound > 0) {
 			if(vec($rout, $stdout_fd, 1) == 1) {
 			    $stdout_buf = sysread_spooler($stdout_fh_read, $stdout_buf, $stdout_handler);
 			}
@@ -674,7 +687,7 @@ sub spawn {
 	    exit if($exit_requested);
 	    if($status) {
 		chomp($status);
-		die sprintf("%s\n", $status);
+		die sprintf("%s\n", $status) if($status ne 'eof');
 	    }
 	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
 	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
@@ -755,14 +768,19 @@ last newline.
 sub sysread_spooler {
     my ($fh, $buffer, $handler) = @_;
     my ($si,$buf,$line) = (0);
-    if(!defined(sysread($fh, $buf, BUFSIZ))) {
+    my $count = sysread($fh, $buf, BUFSIZ);
+    if(!defined($count)) {
 	die sprintf("cannot sysread: [%s]\n", $!);
-    }
-    $buffer .= $buf;
-    while((my $ei = index($buffer, "\n", $si)) >= 0) {
-	$line = substr($buffer, $si, (1+$ei-$si));
-	$handler->($line);
-	$si = (1+$ei);
+    } elsif($count > 0) {
+	$buffer .= $buf;
+	while((my $ei = index($buffer, "\n", $si)) >= 0) {
+	    $line = substr($buffer, $si, (1 + $ei - $si));
+	    $handler->($line);
+	    $si = (1 + $ei);
+	}
+    } else {
+	# $handler->($buffer) if($buffer);
+    	die("eof\n");
     }
     substr($buffer, $si);
 }
