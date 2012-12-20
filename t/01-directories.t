@@ -26,24 +26,6 @@ sub cleanup_after_all_tests : Tests(shutdown) {
 
 ########################################
 
-sub test_ensure_directories_exist_croaks_if_cannot_create : Tests {
-    eval {ensure_directories_exist("/root/foo/bar")};
-    like($@, qr/Permission/);
-}
-
-sub test_ensure_directories_exist_returns_same_name : Tests {
-    is(ensure_directories_exist("t/data/foo.txt"),
-       "t/data/foo.txt");
-}
-
-sub test_ensure_directories_exist_creates_directories : Tests {
-    system("rm -rf t/data");
-    ok(ensure_directories_exist("t/data/foo/bar/baz.txt"));
-    ok(-d "t/data/foo/bar");
-}
-
-########################################
-
 sub test_ensure_directory_exists_croaks_if_cannot_create : Tests {
     eval {ensure_directory_exists("/root/foo/bar")};
     like($@, qr/Permission/);

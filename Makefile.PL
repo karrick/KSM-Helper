@@ -17,6 +17,7 @@ WriteMakefile(
         'Test::More' => 0,
     },
     PREREQ_PM => {
+	# 'Capture::Tiny' => 0.17,
 	'KSM::Logger' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },

@@ -26,29 +26,11 @@ sub cleanup_after_all_tests : Tests(shutdown) {
 
 ########################################
 
-sub test_file_contents_croaks_when_missing_file : Tests {
-    eval { file_contents("t/data/does-not-exist") };
+sub test_file_read_croaks_when_missing_file : Tests {
+    eval { file_read("t/data/does-not-exist") };
     like($@, qr/cannot open file/);
     like($@, qr/\n$/);
 }
-
-sub test_file_contents_read_grabs_entire_file_in_single_call : Tests {
-    my ($self) = @_;
-
-    $self->{filename} = "t/data/test.txt";
-    ensure_directories_exist($self->{filename});
-
-    open(FH, '>', $self->{filename}) or fail sprintf("cannot open file for writting: %s", $!);
-    for(my $index = 1; $index < 6; $index++) {
-	print FH sprintf("Number %d\n", $index);
-    }
-    close(FH) or fail sprintf("cannot close file: %s", $!);
-
-    is(file_contents($self->{filename}),
-       "Number 1\nNumber 2\nNumber 3\nNumber 4\nNumber 5\n");
-}
-
-########################################
 
 sub test_file_read_error_ends_in_newline : Tests {
     eval { file_read("t/data/does-not-exist") };

@@ -13,17 +13,19 @@ use POSIX qw(:sys_wait_h);
 
 use KSM::Logger qw(:all);
 
+use constant BUFSIZ => 4096;
+
 =head1 NAME
 
 KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 1.18
+Version 2.0.0
 
 =cut
 
-our $VERSION = '1.18';
+our $VERSION = '2.0.0';
 
 =head1 SYNOPSIS
 
@@ -48,46 +50,42 @@ tag.  For example:
 
 use Exporter qw(import);
 our %EXPORT_TAGS = ( 'all' => [qw(
+
 	all
 	any
-	change_account
-        command_loop
-	directory_contents
-        create_required_parent_directories
-	ensure_directories_exist
-	ensure_directory_exists
 	equals
-	file_contents
-	file_read
-	file_write
-	find
 	find_all
 	find_first
+
+	command_loop
+
+	create_required_parent_directories
+	directory_contents
+	ensure_directory_exists
+	for_each_non_dotted_item_in_directory
+
+	file_read
+	file_write
+
+	reset_signal_handlers
 	shell_quote
-        split_lines_and_prune_comments
-	with_cwd
-	with_lock
-	with_locked_file
-	with_logging_spawn
-	with_temp
-	with_timeout
-	with_timeout_spawn_child
 	spawn
 	spawn_bang
-        strip
+	sysread_spooler
+	with_capture_spawn
+	with_logging_spawn
 	wrap_ssh
 	wrap_sudo
+
+	split_lines_and_prune_comments
+	strip
+
+	with_cwd
+	with_lock
+	with_temp
+
 )]);
 our @EXPORT_OK = (@{$EXPORT_TAGS{'all'}});
-
-=head2 GLOBALS
-
-Various global variables required to manage child processes.
-
-=cut
-
-our $reaped_children = {};
-our $exit_requested;
 
 =head1 SUBROUTINES/METHODS
 
@@ -108,9 +106,9 @@ test.
 sub all {
     my ($list,$predicate) = @_;
     if(ref($list) ne 'ARRAY') {
-    	croak("argument ought to be array reference");
+	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     } else {
 	foreach (@$list) {
 	    return 0 if(!&{$predicate}($_));
@@ -136,14 +134,14 @@ test.
 sub any {
     my ($list,$predicate) = @_;
     if(ref($list) ne 'ARRAY') {
-    	croak("argument ought to be array reference");
+	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-    	croak("argument ought to be function");
+	croak("argument ought to be function");
     } else {
-    	foreach (@$list) {
-    	    return 1 if(&{$predicate}($_));
-    	}
-    	return 0;
+	foreach (@$list) {
+	    return 1 if(&{$predicate}($_));
+	}
+	return 0;
     }
 }
 
@@ -232,112 +230,6 @@ sub equals {
     }
 }
 
-=head2 file_contents
-
-DEPRECATED -- Please consider using B<file_read>, for example:
-
-    C<< my $some_data = file_read($some_file); >>
-
-Returns string containing contents of F<filename>.
-
-    C<< my $some_data = file_contents($some_file); >>
-
-Opens and reads the file assuming UTF-8 content.
-
-=cut
-
-sub file_contents {
-    file_read(shift);
-}
-
-=head2 file_read
-
-Returns string containing contents of F<filename>.
-
-    C<< my $some_data = file_read($some_file); >>
-
-Opens and reads the file assuming UTF-8 content.
-
-=cut
-
-sub file_read {
-    my ($filename) = @_;
-    local $/;
-    open(FH, '<:encoding(UTF-8)', $filename)
-	or croak sprintf("cannot open file (%s): [%s]\n", $filename, $!);
-    # flock(FH, LOCK_SH)
-    # 	or croak sprintf("cannot lock (%s): [%s]\n", $filename, $!);
-    <FH>;
-}
-
-=head2 file_write
-
-Returns string containing contents of F<filename>.
-
-    C<< file_write($some_file,$blob); >>
-
-Opens and writes the file assuming UTF-8 content. Value of function is
-the value of the data written.
-
-=cut
-
-sub file_write {
-    my ($filename,$blob) = @_;
-    my $dirname = File::Basename::dirname($filename);
-    my $basename = File::Basename::basename($filename);
-    my $tempname = sprintf("%s/.%s", $dirname, $basename);
-
-    create_required_parent_directories($tempname);
-    open(FH, '>:encoding(UTF-8)', $tempname)
-    	or croak sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
-    flock(FH, LOCK_EX)
-    	or croak sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
-    print FH $blob;
-    close FH;
-    rename($tempname, $filename)
-    	or croak sprintf("cannot rename file (%s) -> (%s): [%s]\n",
-    			 $tempname, $filename, $!);
-    $blob;
-}
-
-=head2 find
-
-DEPRECATED -- Please consider using B<find_first>, for example:
-
-   C<< my $found = find('clide', $list, >>
-   C<<                  sub {  >>
-   C<<                      my ($name,$person) = @_; >>
-   C<<                      ($name eq $person->{name} ? 1 : 0); >>
-   C<<                  }); >>
-
-   ...can be converted to:
-
-   C<< my $found = find_first($list, sub { shift->{name} eq 'clide' }); >>
-
-Return the first element in I<list> for which the I<predicate>
-function returns a truthy value.  Returns C<undef> when no element
-passes.
-
-The I<predicate> function ought to take two values, the first is the
-element to find, and the second is the element in the list being
-tested.
-
-=cut
-
-sub find {
-    my ($element,$list,$predicate) = @_;
-    if(ref($list) ne 'ARRAY') {
-	croak("argument ought to be array reference");
-    } elsif(ref($predicate) ne 'CODE') {
-	croak("argument ought to be function");
-    } else {
-	foreach (@$list) {
-	    return $_ if(&{$predicate}($element, $_));
-	}
-	undef;
-    }
-}
-
 =head2 find_first
 
 Return the first element in I<list> for which the I<predicate>
@@ -410,6 +302,53 @@ sub find_all {
     }
 }
 
+=head2 command_loop
+
+Read from filehandle I<fh>, and invoke I<stdout_handler> for each
+newline terminated string. While processing, invoke I<timeout_handler>
+if no input for I<timeout> seconds.
+
+If an error occurs, logs any errors and dies with an appropriate error
+message.
+
+=cut
+
+sub command_loop {
+    my ($fh,$stdout_handler,$timeout_handler,$timeout) = @_;
+
+    if(ref($stdout_handler ne 'CODE')) {
+	croak("stdout_handler not a function");
+    } elsif(ref($timeout_handler ne 'CODE')) {
+	croak("timeout_handler not a function");
+    }
+
+    my ($rin,$stdout_buf) = ("","");
+    my $fd = fileno($fh);
+    vec($rin, $fd, 1) = 1;
+
+    while(1) {
+	if(my $nfound = select(my $rout=$rin, undef, undef, $timeout)) {
+	    if(vec($rout, $fd, 1) == 1) {
+		$stdout_buf = sysread_spooler($fh, $stdout_buf, $stdout_handler);
+	    }
+	} else {
+	    $timeout_handler->();
+	}
+    }
+}
+
+=head2 create_required_parent_directories
+
+Create any parent directories required for file.
+
+=cut
+
+sub create_required_parent_directories {
+    my ($filename) = @_;
+    ensure_directory_exists(File::Basename::dirname($filename));
+    $filename;
+}
+
 =head2 directory_contents
 
 Returns reference to array of strings, each string representing a file
@@ -443,56 +382,15 @@ sub directory_contents {
     eval {
 	opendir(DH, $dir) or die sprintf("cannot opendir: [%s]\n", $!);
 	foreach (readdir DH) {
-	    push(@$files, $_) unless /^\.{1,2}$/;
+	    push(@$files, $_) unless /^\.{1,2}$/; # ??? maybe change
 	}
-	closedir DH;
+	closedir(DH);
     };
     if(my $status = $@) {
 	chomp($status);
-        croak sprintf("cannot read directory_contents (%s): [%s]\n", $dir, $status);
+	die sprintf("cannot read directory_contents (%s): [%s]\n", $dir, $status);
     }
     $files;
-}
-
-=head2 create_required_parent_directories
-
-Create any parent directories required for file.
-
-=cut
-
-sub create_required_parent_directories {
-    my ($filename) = @_;
-    ensure_directory_exists(File::Basename::dirname($filename));
-    $filename;
-}
-
-=head2 ensure_directories_exist
-
-DEPRECATED -- Please consider using B<create_required_parent_directories>.
-
-Takes and returns I<filename>, but creates the directory of
-I<filename> if it does not exist if necessary.
-
-It will croak if permissions are inadequate to create the required
-directories.
-
-    C<< open(FH, '>', ensure_directories_exist($filename)) >>
-    C<<     or croak sprintf("cannot open [%s]: %s", $!); >>
-
-=cut
-
-sub ensure_directories_exist {
-    my ($filename) = @_;
-    eval {
-	# NOTE: mkpath croaks if error
-	File::Path::mkpath(File::Basename::dirname($filename));
-    };
-    if(my $status = $@) {
-	chomp($status);
-        croak sprintf("cannot ensure_directories_exist (%s): [%s]\n",
-                      $filename, $status);
-    }
-    $filename;
 }
 
 =head2 ensure_directory_exists
@@ -516,29 +414,398 @@ sub ensure_directory_exists {
     };
     if(my $status = $@) {
 	chomp($status);
-        croak sprintf("cannot ensure_directory_exists (%s): [%s]\n",
-                      $dirname, $status);
+	die sprintf("cannot ensure_directory_exists (%s): [%s]\n", $dirname, $status);
     }
     $dirname;
 }
 
-=head2 change_account
+=head2 for_each_non_dotted_item_in_directory
 
-DEPRECATED -- see B<wrap_sudo>
-
-Returns the command I<list>, maybe prefixed by appropriate C<sudo> and
-arguments, to change the account.
-
-If I<account> is undefined, the empty string, or matches the account
-name of the process, this function acts as a no-op, and returns the
-array reference unmodified.
-
-Otherwise, it prefixes the command list with C<sudo> and arguments.
+For each non-dotted item in I<directory>, execute I<fn> with the
+pathname of the child as the argument.
 
 =cut
 
-sub change_account {
-    wrap_sudo(@_);
+sub for_each_non_dotted_item_in_directory {
+    my ($directory,$fn) = @_;
+
+    eval {
+	opendir(DH, $directory)
+	    or die sprintf("cannot opendir (%s): [%s]\n", $directory, $!);
+	while(my $child = readdir(DH)) {
+	    next if $child =~ /^\./;
+	    eval {
+		$fn->(sprintf("%s/%s", $directory, $child));
+	    };
+	    if(my $status = $@) {
+		chomp($status);
+		warning("cannot process child: [%s]\n", $status);
+	    }
+	}
+	closedir(DH);
+    };
+    if(my $status = $@) {
+	chomp($status);
+	die sprintf("cannot: [%s]\n", $status);
+    }
+}
+
+=head2 file_read
+
+Returns string containing contents of F<filename>.
+
+    C<< my $some_data = file_read($some_file); >>
+
+Opens and reads the file assuming UTF-8 content.
+
+=cut
+
+sub file_read {
+    my ($filename) = @_;
+    local $/;
+    open(FH, '<:encoding(UTF-8)', $filename)
+	or die sprintf("cannot open file (%s): [%s]\n", $filename, $!);
+    # flock(FH, LOCK_SH)
+    #	or die sprintf("cannot lock (%s): [%s]\n", $filename, $!);
+    my $contents = <FH>;
+    close(FH);
+    $contents;
+}
+
+=head2 file_write
+
+Returns string containing contents of F<filename>.
+
+    C<< file_write($some_file,$blob); >>
+
+Opens and writes the file assuming UTF-8 content. Value of function is
+the value of the data written.
+
+=cut
+
+sub file_write {
+    my ($filename,$blob) = @_;
+    my $dirname = File::Basename::dirname($filename);
+    my $basename = File::Basename::basename($filename);
+    my $tempname = sprintf("%s/.%s", $dirname, $basename);
+
+    eval {
+	create_required_parent_directories($tempname);
+	open(FH, '>:encoding(UTF-8)', $tempname)
+	    or die sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
+	flock(FH, LOCK_EX)
+	    or die sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
+	print FH $blob;
+	close(FH);
+	rename($tempname, $filename)
+	    or die sprintf("cannot rename file (%s) -> (%s): [%s]\n", $tempname, $filename, $!);
+    };
+    my $status = $@;
+    close(FH);
+    if($status) {
+	chomp($status);
+	die sprintf("cannot write file (%s): [%s]\n", $tempname, $status);
+    }
+    $blob;
+}
+
+=head2 reset_signal_handlers
+
+Resets all signal handlers to their default handlers.
+
+Used by newly spawned child processes.
+
+=cut
+
+sub reset_signal_handlers {
+    foreach (qw(HUP INT QUIT ILL ABRT FPE SEGV PIPE ALRM TERM USR1 USR2 CHLD CONT STOP TSTP TTIN TTOU)) {
+	$SIG{$_} = 'DEFAULT';
+    }
+}
+
+=head2 shell_quote
+
+Returns I<input> string quoted for the shell.
+
+    C<< my $list = ['egrep','-i','ERROR|WARNING', 'crazy filename.txt']; >>
+    C<< $list = [map { shell_quote($_) } @$list]; >>
+    C<< system $list; >>
+
+=cut
+
+sub shell_quote {
+    my ($input) = @_;
+    if(defined($input)) {
+	if($input eq '') {
+	    "''";
+	} else {
+	    $input =~ s/([^-0-9a-zA-Z_.\/])/\\$1/g;
+	    $input;
+	}
+    } else {
+	'';
+    }
+}
+
+=head2 spawn
+
+Function to execute a child process, either a command line or perl
+function.
+
+If executing a function, set first parameter to the desired code
+reference:
+
+    C<< my $result = spawn(sub { print "hello\n"; });
+
+If executing a different program, set the first parameter to the
+desired array of strings for the command:
+
+    C<< my $result = spawn(['echo','foo','bar']);
+
+If you desire a timeout, specify such:
+
+    C<< my $result = spawn(['sleep','60'], {timeout => 1});
+
+If you desire execution of the other program as a different user,
+ensure your program has the ability to run 'sudo', and specify the
+alternate user:
+
+    C<< my $result = spawn(['/home/user2/bin/foo'], {user => 'user2'});
+
+If you desire execution of a program on a different host, ensure your
+program has the ability to execute 'ssh' using ssh-keys, and specify
+the alternate host:
+
+    C<< my $result = spawn(['hostname'], {host => 'host2'});
+
+The I<user> and I<host> options are only used in conjunction with
+execution of a command line program. This function will croak if you
+set either I<user> or I<host> option when the first parameter is a
+code reference.
+
+The result will be a hash with several key value pairs:
+
+    C<< my $child = spawn(['echo','one','two']); >>
+
+    C<< {signal => 0, status => 0, >>
+    C<<  started => X, ended => Y, duration => Z } >>
+
+=head3 PARAMETER EXPANSION
+
+There will be no command interpreter, e.g., B<Bash>, to perform
+parameter expansion for you. In other words, the following will not
+look for all the F<*.msg> files in the current working directory, but
+instead look for I<the file> 'C<*.msg>', with an asterisk in its name.
+
+    C<< my $child = spawn(['ls','*.msg']); >>
+
+=cut
+
+sub spawn {
+    my ($execute,$options) = @_;
+
+    if(ref($execute) eq 'ARRAY') {
+	$execute = wrap_sudo($execute, $options->{user});
+	$execute = wrap_ssh($execute,  $options->{host});
+    } elsif(ref($execute) eq 'CODE') {
+	croak("cannot change host without a command line list\n") if($options->{host});
+	croak("cannot change user without a command line list\n") if($options->{user});
+    } else {
+	croak("nothing to execute: no function or list\n");
+    }
+
+    my ($reaped_children,$exit_requested) = ({});
+    my $child = { pid => undef, started => time(), duration => undef, ended => undef, status => undef };
+    if(defined($options->{timeout})) {
+	$child->{ended} = $child->{started} + $options->{timeout};
+    }
+
+    local $SIG{CHLD} = sub { 
+	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
+	    my $status = $?;
+	    $reaped_children->{$pid} = {ended => time(), 
+					status => ($status >> 8), 
+					signal => ($status & 127)};
+	}
+    };
+
+    my ($stdout_fh_read,$stdout_fh_write);
+    pipe($stdout_fh_read, $stdout_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
+    $stdout_fh_write->autoflush(1);
+    my ($stderr_fh_read,$stderr_fh_write);
+    pipe($stderr_fh_read, $stderr_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
+    $stderr_fh_write->autoflush(1);
+
+    if($child->{pid} = fork()) {
+	eval {
+	    my $status;
+	    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+	    my ($rin,$stdout_buf,$stderr_buf) = ("","","");
+	    my $stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
+	    my $stderr_handler = $options->{stderr_handler} || sub { print STDERR shift };
+	    my $stdout_fd = fileno($stdout_fh_read);
+	    my $stderr_fd = fileno($stderr_fh_read);
+	    vec($rin, $stdout_fd, 1) = 1;
+	    vec($rin, $stderr_fd, 1) = 1;
+	    close($stdout_fh_write) or die sprintf("cannot close: [%s]\n", $!);
+	    close($stderr_fh_write) or die sprintf("cannot close: [%s]\n", $!);
+
+	    while(!defined($reaped_children->{$child->{pid}})) {
+		eval {
+		    my $timeout = (defined($options->{timeout}) ? ($child->{ended} - $child->{started}) : undef);
+		    if((my $nfound = select(my $rout=$rin, undef, undef, $timeout)) > 0) {
+			if(vec($rout, $stdout_fd, 1) == 1) {
+			    $stdout_buf = sysread_spooler($stdout_fh_read, $stdout_buf, $stdout_handler);
+			}
+			if(vec($rout, $stderr_fd, 1) == 1) {
+			    $stderr_buf = sysread_spooler($stderr_fh_read, $stderr_buf, $stderr_handler);
+			}
+		    } elsif($exit_requested ||
+			    ((!defined($reaped_children->{$child->{pid}}))
+			     && (defined($child->{ended}) && time() >= $child->{ended}))) {
+			kill('TERM', $child->{pid});
+		    }
+		};
+		if($@) {
+		    $status = $@;
+		    kill('TERM', $child->{pid}); # parent error: term child
+		}
+	    }
+	    exit if($exit_requested);
+	    if($status) {
+		chomp($status);
+		die sprintf("%s\n", $status);
+	    }
+	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
+	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
+	    # merge reaped_children values back into child hash
+	    $child->{status} = $reaped_children->{$child->{pid}}->{status};
+	    $child->{signal} = $reaped_children->{$child->{pid}}->{signal};
+	    $child->{ended}  = $reaped_children->{$child->{pid}}->{ended};
+	    $child->{duration} = ($child->{ended} - $child->{started});
+	};
+	if(my $status = $@) {
+	    chomp($status);
+	    die sprintf("PARENT FAILURE: %s\n", $status);
+	}
+    } elsif(defined($child->{pid})) {
+	eval {
+	    reset_signal_handlers();
+	    $0 = $options->{name} if($options->{name});
+
+	    close($stdout_fh_read) or die sprintf("cannot close STDOUT: [%s]\n", $!);
+	    close($stderr_fh_read) or die sprintf("cannot close STDERR: [%s]\n", $!);
+	    open(STDOUT, '>&=', $stdout_fh_write) or die error("cannot redirect STDOUT: [%s]\n", $!);
+	    open(STDERR, '>&=', $stderr_fh_write) or die error("cannot redirect STDERR: [%s]\n", $!);
+
+	    if(ref($execute) eq 'CODE') {
+		$execute->();
+		exit;
+	    } elsif(ref($execute) eq 'ARRAY') {
+		if(!exec {$execute->[0]} @$execute) {
+		    die sprintf("cannot exec: ", $!);
+		}
+	    }
+	    die "NOTREACHED";
+	};
+	if(my $status = $@) {
+	    chomp($status);
+	    printf STDERR "CHILD FAILURE: %s\n", $status;
+	    exit(1);
+	}
+    } else {
+	die sprintf("cannot fork: [%s]\n", $!);
+    }
+    $child;
+}
+
+=head2 spawn_bang
+
+Invoke I<execute>. If the exit code is non-zero and I<nonzero_okay> is
+not true, die with appropriate error message.
+
+=cut
+
+sub spawn_bang {
+    my ($execute,$options) = @_;
+    my $child = spawn($execute, $options);
+    if($child->{status} != 0 && !$options->{nonzero_okay}) {
+	my ($command,$why) = ("","");
+	if(ref($execute) eq 'ARRAY') {
+	    $command = sprintf(": (%s)", join(" ", @$execute)) 
+	}
+	if($options->{log}) {
+	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{log});
+	}
+
+	die sprintf("cannot %s: (exit code: %d)%s%s", $options->{name}, $child->{status}, $command, $why);
+    }
+    $child;
+}
+
+=head2 sysread_spooler
+
+Read from I<fh> using B<sysread> subroutine, chunking into lines,
+submitting each line to I<handler>. Prior to chunking, prepend
+I<buffer> to the contents of what is read. Return all data after the
+last newline.
+
+=cut
+
+sub sysread_spooler {
+    my ($fh, $buffer, $handler) = @_;
+    my ($si,$buf,$line) = (0);
+    if(!defined(sysread($fh, $buf, BUFSIZ))) {
+	die sprintf("cannot sysread: [%s]\n", $!);
+    }
+    $buffer .= $buf;
+    while((my $ei = index($buffer, "\n", $si)) >= 0) {
+	$line = substr($buffer, $si, (1+$ei-$si));
+	$handler->($line);
+	$si = (1+$ei);
+    }
+    substr($buffer, $si);
+}
+
+=head2 with_capture_spawn
+
+Spawn a child process with standard output and standard error
+captured.
+
+=cut
+
+sub with_capture_spawn {
+    my ($execute,$options) = @_;
+    my ($stdout,$stderr) = ("","");
+    $options->{stdout_handler} = sub { $stdout .= shift };
+    $options->{stderr_handler} = sub { $stderr .= shift };
+    my $child = spawn($execute, $options);
+    $child->{stdout} = $stdout;
+    $child->{stderr} = $stderr;
+    $child;
+}
+
+=head2 with_logging_spawn
+
+Invoke I<execute>, routing C<STDOUT> and C<STDERR> to log facility.
+
+=cut
+
+sub with_logging_spawn {
+    my ($execute,$options) = @_;
+
+    croak("cannot execute: missing name\n") if(!$options->{name});
+    my $name = $options->{name};
+    $options->{stderr_handler} = sub {warning("%s: %s\n", $name, shift)};
+    $options->{stdout_handler} = sub {info("%s: %s\n", $name, shift)};
+
+    my $command = "";
+    if($options->{log_command_line} && ref($execute) eq 'ARRAY') {
+	$command = sprintf(": (%s)", join(" ", @$execute));
+    }
+
+    info("executing %s%s\n", $name, $command);
+    spawn_bang($execute, $options);
 }
 
 =head2 wrap_ssh
@@ -569,50 +836,12 @@ sub wrap_ssh {
 Internal function to prefix command I<list> with required B<sudo>
 invocation parameters.
 
-If I<account> is undefined, the empty string, or matches the account
-name of the process, this function acts as a no-op, and returns the
-array reference unmodified.
-
-Otherwise, it prefixes command I<list> with B<sudo> and arguments.
-
 =cut
 
 sub wrap_sudo {
     my($list,$account)=@_;
-    if(defined($account)
-       && $account ne $ENV{LOGNAME}
-       && $account ne '') {
-	if($account eq 'root') {
-	    unshift(@$list, ('sudo','-n'));
-	} else {
-	    unshift(@$list, ('sudo','-inu',$account));
-	}
-    }
+    unshift(@$list, ('sudo','-Hnu',$account)) if($account);
     $list;
-}
-
-=head2 shell_quote
-
-Returns I<input> string quoted for the shell.
-
-    C<< my $list = ['egrep','-i','ERROR|WARNING', 'crazy filename.txt']; >>
-    C<< $list = [map { shell_quote($_) } @$list]; >>
-    C<< system $list; >>
-
-=cut
-
-sub shell_quote {
-    my ($input) = @_;
-    if(defined($input)) {
-	if($input eq '') {
-	    "''";
-	} else {
-	    $input =~ s/([^-0-9a-zA-Z_.\/])/\\$1/g;
-	    $input;
-	}
-    } else {
-	'';
-    }
 }
 
 =head2 split_lines_and_prune_comments
@@ -645,207 +874,6 @@ sub strip {
     return $string;
 }
 
-=head2 command_loop
-
-Read from filehandle FH, and execute PROCESS_FN for each newline
-terminated string. While processing, invoke TIMEOUT_FN if no input for
-TIMEOUT seconds.
-
-If an error occurs, logs any errors and dies with an appropriate error
-message.
-
-=cut
-
-sub command_loop {
-    my ($fh,$process_fn,$timeout_fn,$timeout) = @_;
-
-    croak("process_fn not a function") if ref($process_fn ne 'CODE');
-    croak("timeout_fn not a function") if ref($timeout_fn ne 'CODE');
-
-    my ($rout,$nfound,$buffer);
-    my ($rin,$input) = ("","");
-    my $fd = fileno($fh);
-    vec($rin, $fd, 1) = 1;
-
-    while(1) {
-	if($nfound = select($rout=$rin, undef, undef, $timeout)) {
-	    if(vec($rout, $fd, 1) == 1) {
-		last if(!sysread($fh, $buffer, 512));
-		$input .= $buffer;
-		if((my $np = index($input, "\n")) >= 0) {
-		    $process_fn->(substr($input, 0, $np));
-		    $input = substr($input, (1+$np));
-		}
-	    }
-	} else {
-	    $timeout_fn->();
-	}
-    }
-}
-
-=head2 spawn
-
-Function to fork/exec a child process.  Child process command line is
-a I<list> of strings rather than a single string.  (See note regarding
-parameter expansion.)
-
-The result will be a hash with several key value pairs:
-
-    C<< my $child = spawn(['echo','one','two']); >>
-
-    C<< {signal => 0, status => 0, >>
-    C<<  stdout => "one two\n", stderr => ""} >>
-
-If you need to redirect C<stdin> from a string, pass it to this
-function as part of the options hash.
-
-    C<< my $child = spawn(['cat'], {stdin => "one\ntwo\tthree\n"}); >>
-
-    C<< {signal => 0, status => 0, >>
-    C<<  stdout => "one\ntwo\nthree\n", stderr => ""} >>
-
-=head3 PARAMETER EXPANSION
-
-As there will be no command interpreter, e.g., B<Bash>, to perform
-parameter expansion for you.  In other words, the following will not
-look for all the F<*.msg> files in the current working directory, but
-instead look for I<the file> 'C<*.msg>', with an asterisk in its name.
-
-    C<< my $child = spawn(['ls','*.msg']); >>
-
-=cut
-
-sub spawn {
-    my($list,$options)=@_;
-    croak("list must be array") unless ref($list) eq 'ARRAY';
-    if(defined($options) && ref($options) ne 'HASH') {
-	croak("options must be hash");
-    }
-    my $child = {};
-    my $result = with_standard_redirection({stdin => $options->{stdin}}, sub {
-	my ($reaped_children,$exit_requested) = ({});
-	local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
-	local $SIG{CHLD} = sub {
-	    use POSIX ":sys_wait_h";
-	    while ((my $pid = waitpid(-1,WNOHANG)) > 0) {
-		my $status = $?;
-		$reaped_children->{$pid} = {ended => time, status => $status};
-	    }
-	};
-
-	if($child->{pid} = fork) {
-	    $child->{started} = time;
-	    $child->{ended} = $child->{started} + $options->{timeout} if(defined($options->{timeout}));
-	    while(!defined($reaped_children->{$child->{pid}})) {
-		my $slept = (defined($options->{timeout}) ? sleep($child->{ended} - $child->{started}) : sleep);
-		if(!defined($reaped_children->{$child->{pid}})) {
-		    if($exit_requested) {
-			kill('TERM',$child->{pid});
-		    } elsif(defined($child->{ended}) && time >= $child->{ended}) {
-			kill('TERM',$child->{pid});
-		    }
-		}
-	    }
-	    # merge reaped_children values back into child hash
-	    $child->{status} = $reaped_children->{$child->{pid}}->{status};
-	    $child->{ended} = $reaped_children->{$child->{pid}}->{ended};
-	    $child->{duration} = $child->{ended} - $child->{started};
-	    exit if($exit_requested);
-	} elsif(defined($child->{pid})) {
-	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
-	    $list = wrap_sudo($list,$options->{sudo});
-	    $list = wrap_ssh($list,$options->{host});
-	    exit 1 if(!exec @$list);
-	    # NOTREACHED
-	} else {
-	    die sprintf("cannot fork: [%s]\n", $!);
-	}
-					   });
-    # merge pertinent result hash values into child
-    $child->{signal} = $child->{status} & 127;
-    $child->{status} = $child->{status} >> 8;
-    $child->{stderr} = $result->{stderr};
-    $child->{stdout} = $result->{stdout};
-
-    # NOTE: value and exception are returned by
-    # with_standard_redirection, but they are not expected for spawn's
-    # function
-    if(0) {
-	$child->{exception} = $result->{exception};
-	$child->{value} = $result->{value};
-    }
-    $child;
-}
-
-=head2 spawn_bang
-
-When you want to spawn a subprocess, and you'd like to have an
-exception raised for you when the process exits with a non-zero status
-code, B<spawn_bang> might be useful.
-
-    C<< spawn_bang(['scp',"${host}:${source}",$dest]); >>
-    C<< print "$source downloaded if we get here\n"; >>
-
-=cut
-
-sub spawn_bang {
-    my($list,$options)=@_;
-    croak("list must be array") unless ref($list) eq 'ARRAY';
-    if(defined($options) && ref($options) ne 'HASH') {
-	croak("options must be hash");
-    }
-    my $child = spawn($list,$options);
-    if($child->{exception}) {
-	die sprintf("%s\n", $child->{exception});
-    } elsif($child->{status}) {
-	die sprintf("child (%s) status %d\n",
-                    (defined($options->{name}) ? $options->{name} : "unknown"), $child->{status});
-    }
-    $child;
-}
-
-=head2 with_logging_spawn
-
-Execute I<list>, routing C<STDOUT> and C<STDERR> to log facility.
-
-=cut
-
-sub with_logging_spawn {
-    my ($list,$options) = @_;
-    croak("ought to pass in list") if(ref($list) ne 'ARRAY');
-    croak("options ought to be hash") if(ref($options) ne 'HASH');
-    croak("options ought to have name key") if(!defined($options->{name}));
-    croak("option logger ought to be CODE") if(defined($options->{logger}) && ref($options->{logger}) ne 'CODE');
-
-    my $logger = $options->{logger} || \&KSM::Logger::verbose;
-    my $joined = join(' ',@$list);
-
-    if($options->{log_command_line}) {
-	$logger->("%s: [%s]", $options->{name}, $joined);
-    } else {
-	$logger->("%s", $options->{name});
-    }
-
-    my $child = spawn($list, $options);
-    if($child->{status} == 0 || $options->{nonzero_okay}) {
-	foreach my $stream (qw(stdout stderr)) {
-	    foreach (split(/\n/, $child->{$stream})) {debug("%s: %s", $options->{name}, $_)}
-	}
-    } else {
-	my $why = "";
-	if($options->{log}) {
-	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{log});
-	}
-	error("%s: FAILED status %s%s", $options->{name}, $child->{status}, $why);
-	foreach my $stream (qw(stdout stderr)) {
-	    foreach (split(/\n/, $child->{$stream})) {error("%s: %s: %s", $options->{name}, $stream, $_)}
-	}
-	die error("cannot %s: (exit code: %d) command = [%s]\n",
-		  $options->{name}, $child->{status}, $joined);
-    }
-    $child;
-}
-
 =head2 with_cwd
 
 Change current working directory to I<directory>, creating it if
@@ -872,26 +900,26 @@ sub with_cwd {
     }
     eval {
         chdir($new_dir)
-            or croak warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
+            or die warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
     };
     if(my $status = $@) {
 	chomp($status);
 	if($status =~ /No such file or directory/) {
 	    File::Path::mkpath($new_dir);
 	    chdir($new_dir)
-		or croak warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
+		or die warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
 	} else {
-	    croak sprintf("%s\n", $status);
+	    die sprintf("%s\n", $status);
 	}
     }
     verbose("cwd: [%s]", $new_dir);
     $result = eval {$function->()};
     chomp($status = $@);
     chdir($old_dir)
-	or croak error("cannot return to previous directory [%s]: %s\n",
+	or die error("cannot return to previous directory [%s]: %s\n",
 		       $old_dir, $!);
     verbose("cwd: [%s]", $old_dir);
-    croak sprintf("%s\n", $status) if $status;
+    die sprintf("%s\n", $status) if $status;
     $result;
 }
 
@@ -924,96 +952,9 @@ sub with_lock {
     verbose("have exclusive lock: [%s]", $filename);
     $result = eval {$function->()};
     chomp($status = $@);
-    close(FILE) or croak error("cannot close (%s): [%s]\n", $filename, $!);
+    close(FILE) or die error("cannot close (%s): [%s]\n", $filename, $!);
     verbose("released exclusive lock: [%s]", $filename);
-    croak sprintf("%s\n", $status) if($status);
-    $result;
-}
-
-=head2 with_locked_file
-
-DEPRECATED -- see B<with_lock>.
-
-=cut
-
-sub with_locked_file {
-    with_lock(@_);
-}
-
-=head2 with_standard_redirection
-
-Execute I<function> with C<stdin> redirected from a source string, and
-C<stdout>, and C<stderr> redirected to strings.
-
-If you need to redirect C<stdin> from a string, pass it as part of the
-I<options> hash:
-
-    C<< my $result = with_standard_redirection({stdin => "foobar\n"}, >>
-    C<<                  sub {  >>
-    C<<                      while(<>) { print; } >>
-    C<<                      42; >>
-    C<<                  }); >>
-
-The I<result> hash will contain several key value pairs. The above
-command would return the following hash:
-
-    C<< { stdout => "foobar\n", stderr => "", >>
-    C<<   value => 42, exception => "" } >>
-
-The exception key value pair will contain any message from an enclosed
-die:
-
-    C<< my $result = with_standard_redirection({stdin => "foobar\n"}, >>
-    C<<                  sub {  >>
-    C<<                      while(<>) { print; } >>
-    C<<                      die "unloved"; >>
-    C<<                  }); >>
-    C<< die($result->{exception}) if($result->{exception}); >>
-
-=cut
-
-sub with_standard_redirection {
-    my ($options,$function) = @_;
-    croak("options must be hash") unless ref($options) eq 'HASH';
-    croak("function must be code") unless ref($function) eq 'CODE';
-
-    my $result = {};
-    open(my $stdin_saved, "<&STDIN")   or die "cannot dup STDIN\n";
-    open(my $stdout_saved, ">&STDOUT") or die "cannot dup STDOUT\n";
-    open(my $stderr_saved, ">&STDERR") or die "cannot dup STDERR\n";
-    with_temp(
-	sub {
-	    my ($stdin_fh, $stdin_temp) = @_;
-	    if(defined($options->{stdin})) {
-		open(FH,'>',$stdin_temp)
-		    or die sprintf("cannot open > (%s): [%s]\n", $stdin_temp, $!);
-		print FH $options->{stdin};
-		close FH;
-		open(STDIN,"<&",$stdin_fh)
-		    or die sprintf("cannot redirect STDIN: [%s]\n", $!);
-	    }
-	    with_temp(
-		sub {
-		    my ($stderr_fh, $stderr_temp) = @_;
-		    open(STDERR,">&",$stderr_fh)
-			or die sprintf("cannot reopen STDERR: [%s]\n", $!);
-		    select((select(STDERR), $| = 1)[0]); # autoflush
-		    with_temp(
-			sub {
-			    my ($stdout_fh, $stdout_temp) = @_;
-			    open(STDOUT,">&",$stdout_fh)
-				or die sprintf("cannot reopen STDOUT: [%s]\n", $!);
-			    select((select(STDOUT), $| = 1)[0]); # autoflush
-			    $result->{value} = eval {$function->()};
-			    chomp($result->{exception} = $@);
-			    $result->{stdout} = file_read($stdout_temp);
-			});
-		    $result->{stderr} = file_read($stderr_temp);
-		});
-	});
-    open(STDIN, "<&", $stdin_saved)   or die "cannot restore STDIN\n";
-    open(STDOUT, ">&", $stdout_saved) or die "cannot restore STDOUT\n";
-    open(STDERR, ">&", $stderr_saved) or die "cannot restore STDERR\n";
+    die sprintf("%s\n", $status) if($status);
     $result;
 }
 
@@ -1050,213 +991,8 @@ sub with_temp {
 	close($fh) if(tell($fh) != -1);
     }
     unlink($fname);
-    croak sprintf("%s\n", $status) if($status);
+    die sprintf("%s\n", $status) if($status);
     $result;
-}
-
-=head2 with_timeout
-
-Executes I<function>, and terminate it early if it does not return
-within I<timeout> number of seconds.
-
-    C<< with_timeout("calculating primes", 10, >>
-    C<<              sub { >>
-    C<<                # convert electrical energy into heat energy >>
-    C<<              }); >>
-
-=cut
-
-sub with_timeout {
-    my ($emsg,$timeout,$function) = @_;
-    my $result;
-
-    local $SIG{ALRM} = sub {croak sprintf("%s\n", $emsg)};
-    alarm $timeout;
-    $result = $function->();
-    alarm 0;
-    $result;
-}
-
-=head2 with_timeout_spawn_child
-
-DEPRECATED -- see B<spawn>
-
-Spawns I<child> process, optionally with a I<timeout>.
-
-    C<< with_timeout_spawn_child({ >>
-    C<<     name => "timeout while calculating prime numbers", >>
-    C<<     timeout => 60, >>
-    C<<     function => sub { >>
-    C<<         # what is the 1,000,000th prime number? >>
-    C<<     }); >>
-
-=cut
-
-sub with_timeout_spawn_child {
-    my ($child) = @_;
-
-    # croak if required arguments missing or invalid
-    if(ref($child) ne 'HASH') {
-	croak("nothing to execute");
-    } elsif(!defined($child->{name}) || !$child->{name}) {
-	croak("nothing to execute: missing name");
-    } elsif(ref($child->{list}) ne 'ARRAY' && ref($child->{function}) ne 'CODE') {
-	croak("nothing to execute: missing list");
-    }
-
-    # ??? Does this corrupt signal handler from caller? neither using
-    # local nor saving and restoring works for this.
-    $SIG{CHLD} = \&REAPER;
-
-    my $result = eval {
-	foreach my $signal (qw(INT TERM)) {
-	    $SIG{$signal} = sub { info("received %s signal; preparing to exit", $signal); $exit_requested = 1 };
-	}
-
-	if(my $pid = fork) {
-	    $child->{pid} = $pid;
-	    $child->{started} = POSIX::strftime("%s", gmtime);
-	    if(defined($child->{timeout})) {
-		$child->{ended} = $child->{started} + $child->{timeout};
-	    }
-	    info('spawned child %d (%s)%s', $pid, $child->{name},
-		 (defined($child->{timeout})
-		  ? sprintf(" with %d second timeout", $child->{timeout})
-		  : ""));
-	    while(!defined($reaped_children->{$pid})) {
-		my $slept = (defined($child->{timeout})
-			     ? sleep($child->{ended} - $child->{started})
-			     : sleep);
-		debug("parent slept for %d seconds", $slept);
-		if(!defined($reaped_children->{$pid})) {
-		    if($exit_requested) {
-			info("sending child %d (%s) the TERM signal", $child->{pid}, $child->{name});
-			kill('TERM', $child->{pid});
-		    } elsif(defined($child->{ended}) && POSIX::strftime("%s", gmtime) > $child->{ended}) {
-			timeout_child($child);
-		    }
-		}
-	    }
-	    log_child_termination(collect_child_stats($child, delete($reaped_children->{$pid})));
-	    if($exit_requested) {
-		info("all children terminated: exiting.");
-		exit;
-	    }
-	    # TODO: determine how to handle non-zero exit of child (die or
-	    # simply return child hash with status?)
-	    $child;
-	} elsif(defined($pid)) {
-	    $SIG{TERM} = $SIG{INT} = 'DEFAULT';
-	    if($child->{function}) {
-		$0 = $child->{name};
-		eval {&{$child->{function}}()};
-		if(my $status = $@) {
-		    chomp($status);
-		    error("%s", $status);
-		    exit -1;
-		}
-		exit;
-	    } elsif($child->{list}) {
-		if(!exec @{$child->{list}}) {
-		    error("cannot exec (%s): (%s): [%s]",
-			  $child->{name}, $child->{list}->[0], $!);
-		    exit 1;
-		}
-	    }
-	} else {
-	    die error("cannot fork: [%s]\n", $!);
-	}
-    };
-    $result;
-}
-
-=head2 REAPER
-
-Internal function to act as the process' handler for C<SIGCHLD>
-signals to prevent zombie processes by collecting child exit status
-information when a child process terminates.
-
-=cut
-
-sub REAPER {
-    my ($pid,$status);
-    # If a second child dies while in the signal handler caused by the
-    # first death, we won't get another signal. So must loop here else
-    # we will leave the unreaped child as a zombie. And the next time
-    # two children die we get another zombie. And so on.
-    while (($pid = waitpid(-1,WNOHANG)) > 0) {
-	$status = $?;
-	$reaped_children->{$pid} = {
-	    ended => POSIX::strftime("%s", gmtime),
-	    status => $status,
-	};
-    }
-    $SIG{CHLD} = \&REAPER;  # still loathe SysV
-}
-
-=head2 timeout_child
-
-Internal function to send child process the C<TERM> signal.
-
-=cut
-
-sub timeout_child {
-    my ($child) = @_;
-    info("timeout: sending child %d (%s) the TERM signal%s",
-	 $child->{pid}, $child->{name},
-	 (defined($child->{timeout})
-	  ? sprintf(" after %s seconds", $child->{timeout})
-	  : ''));
-    kill('TERM', $child->{pid});
-}
-
-=head2 collect_child_stats
-
-Internal function to collect stats from terminated child process.
-
-=cut
-
-sub collect_child_stats {
-    my ($child, $reaped_child) = @_;
-
-    $child->{status} = $reaped_child->{status};
-    $child->{ended} = $reaped_child->{ended};
-    $child->{duration} = ($child->{ended} - $child->{started});
-    $child;
-}
-
-=head2 log_child_termination
-
-Internal function to log the termination of a child process.
-
-=cut
-
-sub log_child_termination {
-    my ($child) = @_;
-
-    croak("invalid child") unless defined($child);
-    croak("invalid child") unless ref($child) eq 'HASH';
-    croak("invalid child pid") unless defined($child->{pid});
-    croak sprintf("invalid child duration for %d", $child->{pid}) unless defined($child->{duration});
-    croak sprintf("invalid child name for %d", $child->{pid}) unless defined($child->{name});
-    croak sprintf("invalid child status for %d", $child->{pid}) unless defined($child->{status});
-
-    my $child_status = $child->{status};
-    if($child_status) {
-	if($child_status & 127) {
-	    warning('child %d (%s) received signal %d and terminated status code %d',
-		    $child->{pid}, $child->{name},
-		    $child_status & 127, $child_status >> 8);
-	} else {
-	    warning('child %d (%s) terminated status code %d',
-		    $child->{pid}, $child->{name},
-		    $child_status >> 8);
-	}
-    } else {
-	info('child %d (%s) terminated status code 0',
-	     $child->{pid}, $child->{name});
-    }
-    $child;
 }
 
 =head1 AUTHOR

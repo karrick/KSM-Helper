@@ -49,7 +49,7 @@ sub with_captured_log {
 					 sprintf("%s: %s", $level, $msg);
 				     }});
 	    eval { &{$function}(@_) };
-	    file_contents($logfile);
+	    file_read($logfile);
 	});
 }
 

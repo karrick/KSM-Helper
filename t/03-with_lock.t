@@ -35,7 +35,7 @@ sub with_captured_log {
 				 }});
 	eval { &{$function}(@_) };
 	# diag sprintf("READING LOG FILE: %s", $logfile);
-	file_contents($logfile);
+	file_read($logfile);
 	      });
 }
 
