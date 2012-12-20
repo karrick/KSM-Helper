@@ -322,13 +322,12 @@ sub command_loop {
 	croak("timeout_handler not a function");
     }
 
-    my $stop = time() + $timeout;
     my ($rin,$stdout_buf) = ("","");
     my $fd = fileno($fh);
     vec($rin, $fd, 1) = 1;
 
     while(1) {
-	my $nfound = select(my $rout=$rin, undef, undef, ($stop - time()));
+	my $nfound = select(my $rout=$rin, undef, undef, $timeout);
 	if($nfound == -1) {
 	    die sprintf("cannot select: [%s]\n", $!);
 	} elsif($nfound > 0) {
