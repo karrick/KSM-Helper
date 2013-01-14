@@ -21,11 +21,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.1
+Version 2.0.2
 
 =cut
 
-our $VERSION = '2.0.1';
+our $VERSION = '2.0.2';
 
 =head1 SYNOPSIS
 
@@ -630,6 +630,7 @@ sub spawn {
     }
 
     local $SIG{CHLD} = sub { 
+	local $!;
 	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
 	    my $status = $?;
 	    $reaped_children->{$pid} = {ended => time(), 
