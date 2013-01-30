@@ -12,7 +12,7 @@ END { Test::Class->runtests }
 
 ########################################
 
-use KSM::Helper qw(equals);
+use KSM::Helper qw(:all);
 
 ########################################
 

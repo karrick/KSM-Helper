@@ -19,11 +19,10 @@ use KSM::Helper ':all';
 ########################################
 # with_captured_log
 
-sub with_captured_log {
+sub with_captured_log(&) {
     my $function = shift;
     # remaining args for function
-
-    with_temp(sub {
+    with_temp {
 	my (undef,$logfile) = @_;
 	KSM::Logger::initialize({level => KSM::Logger::DEBUG,
 				 filename_template => $logfile,
@@ -33,35 +32,12 @@ sub with_captured_log {
 				     croak("undefined msg") if !defined($msg);
 				     sprintf("%s: %s", $level, $msg);
 				 }});
-	eval { &{$function}(@_) };
-	# diag sprintf("READING LOG FILE: %s", $logfile);
+	eval { $function->(@_) };
 	file_read($logfile);
-	      });
+    };
 }
 
 ########################################
-
-sub test_returns_result_of_function : Tests {
-    is(with_lock(__FILE__,
-			sub {
-			    "some value from function";
-			}),
-       "some value from function");
-}
-
-sub test_croaks_if_unable_to_open : Tests {
-    my ($stdout,$stderr,@result) = capture {
-        eval {
-            with_lock("/root/does/not/exist",
-                      sub {
-                          1;
-                      });
-        };
-        like($@, qr/^cannot open/);
-    };
-    like($stderr, qr|cannot open|);
-    is($stdout, "");
-}
 
 sub test_croaks_when_second_argument_not_function : Tests {
     my ($stdout,$stderr,@result) = capture {
@@ -72,14 +48,35 @@ sub test_croaks_when_second_argument_not_function : Tests {
     is($stdout, "");
 }
 
+sub test_returns_result_of_function : Tests {
+    is(with_lock(__FILE__,
+		 sub {
+		     "some value from function";
+		 }),
+       "some value from function");
+}
+
+sub test_croaks_if_unable_to_open : Tests {
+    my ($stdout,$stderr,@result) = capture {
+	eval {
+	    with_lock("/root/does/not/exist",
+		      sub {
+			  1;
+		      });
+	};
+	like($@, qr/^cannot open/);
+    };
+    like($stderr, qr|cannot open|);
+    is($stdout, "");
+}
+
 sub test_logs_actions_when_called_function_succeeds : Tests {
-    my $log = with_captured_log(
-	sub {
-	    with_lock(__FILE__,
-			     sub {
-				 info("some action logged by client code");
-			     });
-	});
+    my $log = with_captured_log {
+	with_lock(__FILE__,
+		  sub {
+		      info("some action logged by client code");
+		  });
+    };
     like($log, qr/getting exclusive lock/);
     like($log, qr/have exclusive lock/);
     like($log, qr/released exclusive lock/);
@@ -88,23 +85,18 @@ sub test_logs_actions_when_called_function_succeeds : Tests {
 
 sub test_croaks_if_function_croaks : Tests {
     eval {
-	with_lock(__FILE__,
-			 sub {
-			     croak("my belly aches!");
-			 });
+	with_lock(__FILE__, sub {
+	    croak("my belly aches!");
+		  });
     };
     like($@, qr/my belly aches!/);
 }
 
 sub test_releases_lock_if_function_croaks : Tests {
-    my $log = with_captured_log(
-	sub {
-	    eval {
-		with_lock(__FILE__,
-				 sub {
-				     croak("my belly aches!");
-				 });
-	    };
-	});
+    my $log = with_captured_log {
+	with_lock(__FILE__, sub {
+	    croak("my belly aches!");
+		  });
+    };
     like($log, qr/released exclusive lock/);
 }

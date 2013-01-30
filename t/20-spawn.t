@@ -25,39 +25,33 @@ sub is_pid_still_alive {
 
 ########################################
 
-sub with_captured_log {
+sub with_captured_log(&) {
     my $function = shift;
     # remaining args for function
-
-    with_temp(
-	sub {
-	    my (undef,$logfile) = @_;
-	    # remaining args for function
-
-	    KSM::Logger::filename_template($logfile);
-	    KSM::Logger::reformatter(sub {
-		my ($level,$msg) = @_; 
-		croak("undefined level") unless defined($level);
-		croak("undefined msg") unless defined($msg);
-		sprintf("%s: %s", $level, $msg);
-				     });
-	    eval { &{$function}(@_) };
-	    is($@, '', "should not have reported error");
-	    file_read($logfile);
-	});
+    with_temp {
+	my (undef,$logfile) = @_;
+	KSM::Logger::initialize({level => KSM::Logger::DEBUG,
+				 filename_template => $logfile,
+				 reformatter => sub {
+				     my ($level,$msg) = @_;
+				     croak("undefined level") if !defined($level);
+				     croak("undefined msg") if !defined($msg);
+				     sprintf("%s: %s", $level, $msg);
+				 }});
+	eval { $function->(@_) };
+	file_read($logfile);
+    };
 }
 
 sub test_helper_with_captured_log {
-    is(with_captured_log(
-	   sub {
-	       info("FIXME");
-	   }),
+    is(with_captured_log {
+	info("FIXME");
+       },
        "INFO: FIXME\n");
 
-    is(with_captured_log(
-	   sub {
-	       warning("This is a warning");
-	   }),
+    is(with_captured_log {
+	warning("This is a warning");
+       },
        "WARNING: This is a warning\n");
 }
 test_helper_with_captured_log();
@@ -201,7 +195,7 @@ sub test_spawn_with_stdout_handler_directs_child_stdout_to_handler {
     my ($out,$err) = ("","");
     my ($stdout,$stderr,@result) = capture {
 	spawn(['printf','%s\n%s\n','foo','bar'],
-	       { stdout_handler => sub { $out .= shift } });
+	      { stdout_handler => sub { $out .= shift } });
     };
     is($stdout, "");
     is($stderr, "");
@@ -210,11 +204,10 @@ sub test_spawn_with_stdout_handler_directs_child_stdout_to_handler {
 test_spawn_with_stdout_handler_directs_child_stdout_to_handler();
 
 sub test_with_capture_spawn {
-    my $child = with_capture_spawn(
-	sub { 
-	    print STDOUT "foo\n";
-	    print STDERR "bar\n";
-	});
+    my $child = with_capture_spawn(sub {
+	print STDOUT "foo\n";
+	print STDERR "bar\n";
+				   });
     is($child->{stdout}, "foo\n");
     is($child->{stderr}, "bar\n");
     ok(defined($child->{status}));
@@ -237,35 +230,32 @@ test_spawn_bang();
 ########################################
 
 sub test_with_logging_spawn_logs_execution_of_name {
-    my $log = with_captured_log(
-	sub {
-	    with_logging_spawn(sub {42}, {name => "TEST1"});
-	});
+    my $log = with_captured_log {
+	with_logging_spawn(sub {42}, {name => "TEST1"});
+    };
     like($log, qr|executing TEST1|);
 }
 test_with_logging_spawn_logs_execution_of_name();
 
 sub test_with_logging_spawn_can_log_command_line {
-    my $log = with_captured_log(
-	sub {
-	    with_logging_spawn(
-		['echo','foo','bar'],
-		{name => 'TEST3', log_command_line => 1})
-	});
+    my $log = with_captured_log {
+	with_logging_spawn(
+	    ['echo','foo','bar'],
+	    {name => 'TEST3', log_command_line => 1})
+    };
     like($log, qr|executing TEST3: \(echo foo bar\)|);
 }
 test_with_logging_spawn_can_log_command_line();
 
 sub test_with_logging_spawn_redirects_stdout_and_stderr {
-    my $log = with_captured_log(
-	sub {
-	    with_logging_spawn(
-		sub {
-		    print STDOUT "stdout\n";
-		    print STDERR "stderr\n";
-		},
-		{name => 'TEST2'})
-	});
+    my $log = with_captured_log {
+	with_logging_spawn(
+	    sub {
+		print STDOUT "stdout\n";
+		print STDERR "stderr\n";
+	    },
+	    {name => 'TEST2'})
+    };
     like($log, qr|INFO: TEST2: stdout|);
     like($log, qr|WARNING: TEST2: stderr|);
 }

@@ -22,11 +22,11 @@ use KSM::Helper qw(:all);
 use constant TEST_DIR_COUNT => 2;
 use constant TEST_DOT_COUNT => 3;
 
-sub chdir_to_test_data_directory : Tests(setup) {
+sub chdir_to_test_data_directory : Test(setup) {
     my ($self) = @_;
 
     $self->{start_directory} = POSIX::getcwd();
-    
+
     chomp($self->{source} = `mktemp -d`);
     chomp($self->{destination} = `mktemp -d`);
 
@@ -35,24 +35,24 @@ sub chdir_to_test_data_directory : Tests(setup) {
 
     # create a few regular files in source
     for(my $index = 0; $index < TEST_DIR_COUNT; $index++) {
-    	$test_file = sprintf($template, $self->{destination}, "", $index);
-    	open(FILE, '>', $test_file)
-    	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
-    	print FILE sprintf("I can count to %d!\n", $index);
-    	close FILE;
+	$test_file = sprintf($template, $self->{destination}, "", $index);
+	open(FILE, '>', $test_file)
+	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
+	print FILE sprintf("I can count to %d!\n", $index);
+	close FILE;
     }
 
     # create a few dot files in destination
     for(my $index = 0; $index < TEST_DOT_COUNT; $index++) {
-    	$test_file = sprintf($template, $self->{destination}, ".", $index);
-    	open(FILE, '>', $test_file)
-    	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
-    	print FILE sprintf("I can count to %d!\n", $index);
-    	close FILE;
+	$test_file = sprintf($template, $self->{destination}, ".", $index);
+	open(FILE, '>', $test_file)
+	    or fail sprintf('cannot create temp file: [%s]: %s', $test_file, $!);
+	print FILE sprintf("I can count to %d!\n", $index);
+	close FILE;
     }
 }
 
-sub remove_test_artifact_and_return_to_start_directory : Tests(teardown) {
+sub remove_test_artifact_and_return_to_start_directory : Test(teardown) {
     my ($self) = @_;
     chdir($self->{start_directory});
     File::Path::rmtree($self->{destination}) if -d $self->{destination};
@@ -68,7 +68,7 @@ sub test_directory_contents_croaks_when_directory_invalid : Tests {
 sub test_directory_contents_assumes_cwd_when_no_argument : Tests {
     my ($self) = @_;
 
-    my $contents = with_cwd($self->{destination}, 
+    my $contents = with_cwd($self->{destination},
 			    sub {
 				directory_contents();
 			    });
@@ -78,7 +78,7 @@ sub test_directory_contents_assumes_cwd_when_no_argument : Tests {
 sub test_directory_contents_works_when_directory_argument_is_dot : Tests {
     my ($self) = @_;
 
-    my $contents = with_cwd($self->{destination}, 
+    my $contents = with_cwd($self->{destination},
 			    sub {
 				directory_contents('.');
 			    });

@@ -40,9 +40,9 @@ sub test_can_find_first_with_eq : Tests {
 
 sub test_works_with_arbitrary_functions : Tests {
     my $list = [{name => 'abe', age => 10},
-                {name => 'barney', age => 20},
-                {name => 'clide', age => 30},
-                {name => 'dean', age => 40}];
+		{name => 'barney', age => 20},
+		{name => 'clide', age => 30},
+		{name => 'dean', age => 40}];
 
     is_deeply(find_first($list, sub { shift->{name} eq 'clide' }),
 	      {name => 'clide', age => 30});
@@ -53,9 +53,9 @@ sub test_works_with_arbitrary_functions : Tests {
 
 sub test_returns_first_element_that_passes : Tests {
     my $list = [{name => 'abe', age => 10},
-                {name => 'barney', age => 20},
-                {name => 'clide', age => 30},
-                {name => 'dean', age => 40}];
+		{name => 'barney', age => 20},
+		{name => 'clide', age => 30},
+		{name => 'dean', age => 40}];
     is_deeply(find_first($list, sub { shift->{age} >= 30 }),
 	      {name => 'clide', age => 30});
 }

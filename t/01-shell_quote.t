@@ -12,28 +12,28 @@ END { Test::Class->runtests }
 
 ########################################
 
-use KSM::Helper qw(:all);
+use KSM::Helper 'shell_quote';
 
 ########################################
 
 sub test_no_subst : Tests {
-    is(KSM::Helper::shell_quote('foo'), 'foo');
-    is(KSM::Helper::shell_quote('--bar'), '--bar');
-    is(KSM::Helper::shell_quote('a_0/Z.-9'), 'a_0/Z.-9');
+    is(shell_quote('foo'), 'foo');
+    is(shell_quote('--bar'), '--bar');
+    is(shell_quote('a_0/Z.-9'), 'a_0/Z.-9');
 }
 
 sub test_undef : Tests {
-    is(KSM::Helper::shell_quote(), '');
+    is(shell_quote(), '');
 }
 
 sub test_empty_string : Tests {
-    is(KSM::Helper::shell_quote(''), "''");
+    is(shell_quote(''), "''");
 }
 
 sub test_special_character : Tests {
-    is(KSM::Helper::shell_quote('!@#$%^&*(),<>?'), '\!\@\#\$\%\^\&\*\(\)\,\<\>\?');
+    is(shell_quote('!@#$%^&*(),<>?'), '\!\@\#\$\%\^\&\*\(\)\,\<\>\?');
 }
 
 sub test_command : Tests {
-    is(KSM::Helper::shell_quote('emacs --daemon'), 'emacs\ --daemon');
+    is(shell_quote('emacs --daemon'), 'emacs\ --daemon');
 }

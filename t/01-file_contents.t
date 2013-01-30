@@ -26,6 +26,16 @@ sub cleanup_after_all_tests : Tests(shutdown) {
 
 ########################################
 
+sub test_file_contents_works : Tests {
+    eval { file_contents("t/data/does-not-exist") };
+    like($@, qr/cannot open file/);
+    like($@, qr/\n$/);
+
+    my $blob = "La Cité interdite présente des chefs-d'oeuvre qu'elle va prêter au Louvre";
+    file_write("t/data/utf8.txt", $blob);
+    is(file_contents("t/data/utf8.txt"), $blob);
+}
+
 sub test_file_read_croaks_when_missing_file : Tests {
     eval { file_read("t/data/does-not-exist") };
     like($@, qr/cannot open file/);

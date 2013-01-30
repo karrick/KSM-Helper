@@ -25,7 +25,7 @@ Version 2.0.2
 
 =cut
 
-our $VERSION = '2.0.2';
+our $VERSION = '2.0.3';
 
 =head1 SYNOPSIS
 
@@ -64,6 +64,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	ensure_directory_exists
 	for_each_non_dotted_item_in_directory
 
+	file_contents
 	file_read
 	file_write
 
@@ -108,7 +109,7 @@ sub all {
     if(ref($list) ne 'ARRAY') {
 	croak("argument ought to be array reference");
     } elsif(ref($predicate) ne 'CODE') {
-	croak("argument ought to be function");
+    	croak("argument ought to be function");
     } else {
 	foreach (@$list) {
 	    return 0 if(!&{$predicate}($_));
@@ -459,6 +460,19 @@ sub for_each_non_dotted_item_in_directory {
     }
 }
 
+=head2 file_contents
+
+DEPRECATED
+
+Provided for backward compatibility.  Consider using file_read
+instead.
+
+=cut
+
+sub file_contents {
+    file_read(@_);
+}
+
 =head2 file_read
 
 Returns string containing contents of F<filename>.
@@ -716,7 +730,7 @@ sub spawn {
 		exit;
 	    } elsif(ref($execute) eq 'ARRAY') {
 		if(!exec {$execute->[0]} @$execute) {
-		    die sprintf("cannot exec: ", $!);
+		    die sprintf("cannot exec: [%s]\n", $!);
 		}
 	    }
 	    die "NOTREACHED";
@@ -840,7 +854,7 @@ Otherwise, it prefixes command I<list> with B<ssh> and arguments.
 =cut
 
 sub wrap_ssh {
-    my($list,$host)=@_;
+    my($list,$host) = @_;
     chomp(my $hostname = `hostname -s`);
     if(defined($host) && $host ne '' && $host ne 'localhost' && $host ne $hostname) {
 	$list = [map { shell_quote($_) } @$list];
@@ -857,7 +871,7 @@ invocation parameters.
 =cut
 
 sub wrap_sudo {
-    my($list,$account)=@_;
+    my($list,$account) = @_;
     unshift(@$list, ('sudo','-Hnu',$account)) if($account);
     $list;
 }
@@ -935,7 +949,7 @@ sub with_cwd {
     chomp($status = $@);
     chdir($old_dir)
 	or die error("cannot return to previous directory [%s]: %s\n",
-		       $old_dir, $!);
+		     $old_dir, $!);
     verbose("cwd: [%s]", $old_dir);
     die sprintf("%s\n", $status) if $status;
     $result;
@@ -996,18 +1010,12 @@ mischiefous programs.  The file name is also provided.
 
 =cut
 
-sub with_temp {
+sub with_temp(&) {
     my ($function) = @_;
-    my ($result);
-    croak("argument ought to be function") if(ref($function) ne 'CODE');
     my ($fh,$fname) = File::Temp::tempfile();
-    $result = eval {$function->($fh,$fname)};
+    my $result = eval {$function->($fh,$fname)};
     chomp(my $status = $@);
-    {
-	# localize no warnings
-	no warnings;
-	close($fh) if(tell($fh) != -1);
-    }
+    close($fh) if(defined(fileno($fh)));
     unlink($fname);
     die sprintf("%s\n", $status) if($status);
     $result;
