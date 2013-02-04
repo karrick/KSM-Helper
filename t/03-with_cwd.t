@@ -4,6 +4,8 @@ use utf8;
 use diagnostics;
 use strict;
 use warnings;
+use File::Spec;
+use File::Temp qw(tempdir tempfile);
 use Carp;
 use Test::More;
 use Test::Class;
@@ -20,15 +22,23 @@ use KSM::Helper ':all';
 
 ########################################
 
-sub chdir_to_test_data_directory : Tests(setup) {
-    my ($self) = @_;
-    $self->{start_directory} = POSIX::getcwd();
-    chomp($self->{dir} = `mktemp -d`);
+sub tempdir_wrapper_for_mac {
+    my $start = POSIX::getcwd();
+    chdir(File::Temp::tempdir()) or fail($!);
+    my $temp = POSIX::getcwd();
+    chdir($start) or fail($!);
+    $temp;
 }
 
-sub remove_test_artifact_and_return_to_start_directory : Tests(teardown) {
+sub create_test_data_directory : Test(setup) {
     my ($self) = @_;
-    chdir($self->{start_directory});
+    $self->{start_directory} = POSIX::getcwd();
+    $self->{dir} = tempdir_wrapper_for_mac();
+}
+
+sub remove_test_artifact_and_return_to_start_directory : Test(teardown) {
+    my ($self) = @_;
+    chdir($self->{start_directory}) or fail($!);
     File::Path::rmtree($self->{dir}) if -d $self->{dir};
 }
 
@@ -62,23 +72,33 @@ sub with_captured_log(&) {
 
 sub test_croaks_when_cannot_change_to_specified_directory : Tests {
     with_captured_log {
-	eval {with_cwd('/root', sub {1})};
-	like($@, qr/cannot change directory/);
-	like($@, qr/Permission denied/);
+	eval {with_cwd(sprintf("%s/foo", File::Spec->rootdir()), sub {1})};
+	like($@, qr|cannot change directory|);
+	like($@, qr|Permission denied|);
     };
 }
 
 sub test_croaks_when_cannot_create_specified_directory : Tests {
     with_captured_log {
-	eval {with_cwd('/root/foo', sub {1})};
-	like($@, qr/cannot change directory/);
-	like($@, qr/Permission denied/);
+	eval {with_cwd(sprintf("%s/foo", File::Spec->rootdir()), sub {1})};
+	like($@, qr|cannot change directory|);
+	like($@, qr|Permission denied|);
+    };
+}
+
+sub test_changes_working_directory : Tests {
+    my ($self) = @_;
+    with_captured_log {
+	with_cwd($self->{dir},
+		 sub {
+		     is(POSIX::getcwd(), $self->{dir});
+		 });
     };
 }
 
 sub test_returns_result_of_function : Tests {
     with_captured_log {
-	is(with_cwd("/tmp", sub {"some value from function"}),
+	is(with_cwd(File::Spec->tmpdir(), sub {"some value from function"}),
 	   "some value from function");
     };
 }
@@ -86,12 +106,12 @@ sub test_returns_result_of_function : Tests {
 sub test_logs_if_original_directory_missing_when_function_ends : Tests {
     my ($self) = @_;
 
-    chomp(my $other = `mktemp -d`);
+    my $other = File::Temp::tempdir();
     my $log = with_captured_log {
 	chdir($other) or fail sprintf("cannot chdir [%s]", $other);
 	with_cwd($self->{dir},
 		 sub {
-		     system("rm -rf $other");
+		     File::Path::rmtree($other);
 		 });
     };
     like($log, qr/cannot return to previous directory/);
@@ -100,49 +120,49 @@ sub test_logs_if_original_directory_missing_when_function_ends : Tests {
 
 sub test_if_function_succeeds : Tests {
     my ($self) = @_;
+    my $dir = POSIX::getcwd();
     my $log = with_captured_log {
 	is(with_cwd($self->{dir},
 		    sub {
-			is($self->{dir}, POSIX::getcwd(), "should change directory");
-			"some value"
+			"some value";
 		    }),
 	   "some value",
 	   "should return function value");
-	is($self->{start_directory}, POSIX::getcwd(),
+	is(POSIX::getcwd(), $dir,
 	   "should return to start directory");
     };
     like($log, qr|cwd: \[$self->{dir}\]|);
-    like($log, qr|cwd: \[$self->{start_directory}\]|);
+    like($log, qr|cwd: \[$dir\]|);
 }
 
 sub test_if_function_croaks : Tests {
     my ($self) = @_;
+    my $dir = POSIX::getcwd();
     my $log = with_captured_log {
 	with_cwd($self->{dir},
 		 sub {
-		     is($self->{dir}, POSIX::getcwd(), "should change directory");
-		     die "burp!"
+		     die "burp";
 		 });
-	like($@, qr/burp!/, "should recroak");
-	is($self->{start_directory}, POSIX::getcwd(),
+	like($@, qr|burp|, "should recroak");
+	is(POSIX::getcwd(), $dir,
 	   "should return to start directory");
     };
     like($log, qr|cwd: \[$self->{dir}\]|);
-    like($log, qr|cwd: \[$self->{start_directory}\]|);
+    like($log, qr|cwd: \[$dir\]|);
 }
 
 sub test_should_create_directory_if_not_exist : Tests {
     my ($self) = @_;
+    my $dir = POSIX::getcwd();
     my $other = sprintf("%s/other", $self->{dir});
     my $log = with_captured_log {
 	with_cwd($other,
 		 sub {
-		     is($other, POSIX::getcwd(), "should change directory");
+		     ok(-d $other);
 		 });
-	is($self->{start_directory}, POSIX::getcwd(),
+	is(POSIX::getcwd(), $dir,
 	   "should return to start directory");
     };
-    like($log, qr|No such file or directory|);
     like($log, qr|cwd: \[$other\]|);
-    like($log, qr|cwd: \[$self->{start_directory}\]|);
+    like($log, qr|cwd: \[$dir\]|);
 }

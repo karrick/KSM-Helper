@@ -5,6 +5,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Errno;
 use Fcntl qw(:flock);
 use File::Basename ();
 use File::Path ();
@@ -21,11 +22,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.2
+Version 2.0.4
 
 =cut
 
-our $VERSION = '2.0.3';
+our $VERSION = '2.0.4';
 
 =head1 SYNOPSIS
 
@@ -637,33 +638,39 @@ sub spawn {
 	croak("nothing to execute: no function or list\n");
     }
 
-    my ($reaped_children,$exit_requested) = ({});
-    my $child = { pid => undef, started => time(), duration => undef, ended => undef, status => undef };
+    my $child = { started => time() };
+    my $hard_stop;
     if(defined($options->{timeout})) {
-	$child->{ended} = $child->{started} + $options->{timeout};
+	$hard_stop = $child->{started} + $options->{timeout};
     }
 
     local $SIG{CHLD} = sub { 
 	local $!;
 	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
 	    my $status = $?;
-	    $reaped_children->{$pid} = {ended => time(), 
-					status => ($status >> 8), 
-					signal => ($status & 127)};
+	    $child->{ended} = time();
+	    $child->{status} = ($status >> 8);
+	    $child->{signal} = ($status & 127);
+	    $child->{duration} = $child->{ended} - $child->{started};
 	}
     };
 
     my ($stdout_fh_read,$stdout_fh_write);
     pipe($stdout_fh_read, $stdout_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
     $stdout_fh_write->autoflush(1);
+
     my ($stderr_fh_read,$stderr_fh_write);
     pipe($stderr_fh_read, $stderr_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
     $stderr_fh_write->autoflush(1);
 
-    if($child->{pid} = fork()) {
+    if(my $pid = fork()) {
 	eval {
-	    my $status;
+	    close($stdout_fh_write) or die sprintf("cannot close: [%s]\n", $!);
+	    close($stderr_fh_write) or die sprintf("cannot close: [%s]\n", $!);
+
+	    my ($status,$exit_requested);
 	    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+
 	    my ($rin,$stdout_buf,$stderr_buf) = ("","","");
 	    my $stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
 	    my $stderr_handler = $options->{stderr_handler} || sub { print STDERR shift };
@@ -671,14 +678,16 @@ sub spawn {
 	    my $stderr_fd = fileno($stderr_fh_read);
 	    vec($rin, $stdout_fd, 1) = 1;
 	    vec($rin, $stderr_fd, 1) = 1;
-	    close($stdout_fh_write) or die sprintf("cannot close: [%s]\n", $!);
-	    close($stderr_fh_write) or die sprintf("cannot close: [%s]\n", $!);
 
-	    while(!defined($reaped_children->{$child->{pid}})) {
+	    while(!defined($child->{ended})) {
 		eval {
-		    my $timeout = (defined($options->{timeout}) ? ($child->{ended} - time()) : undef);
+		    my $timeout;
+		    if(defined($hard_stop)) {
+			$timeout = $hard_stop - time();
+		    }
 		    my $nfound = select(my $rout=$rin, undef, undef, $timeout);
-		    if($nfound == -1) {
+		    if(($nfound == -1) && ($!{EINTR} == 0)) {
+			# die if error was something other than EINTR
 			die sprintf("cannot select: [%s]\n", $!);
 		    } elsif($nfound > 0) {
 			if(vec($rout, $stdout_fd, 1) == 1) {
@@ -688,58 +697,55 @@ sub spawn {
 			    $stderr_buf = sysread_spooler($stderr_fh_read, $stderr_buf, $stderr_handler);
 			}
 		    } elsif($exit_requested ||
-			    ((!defined($reaped_children->{$child->{pid}}))
-			     && (defined($child->{ended}) && time() >= $child->{ended}))) {
-			kill('TERM', $child->{pid});
+			    ((!defined($child->{ended}))
+			     && (defined($hard_stop) && time() >= $hard_stop))) {
+			kill('TERM', $pid);
 		    }
 		};
 		if($@) {
 		    $status = $@;
-		    kill('TERM', $child->{pid}); # parent error: term child
+		    $@ = '';
+		    $! = 0;
+		    kill('TERM', $pid); # term child if parent erred
 		}
 	    }
 	    exit if($exit_requested);
+	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
+	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
 	    if($status) {
 		chomp($status);
 		die sprintf("%s\n", $status) if($status ne 'eof');
 	    }
-	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
-	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
-	    # merge reaped_children values back into child hash
-	    $child->{status} = $reaped_children->{$child->{pid}}->{status};
-	    $child->{signal} = $reaped_children->{$child->{pid}}->{signal};
-	    $child->{ended}  = $reaped_children->{$child->{pid}}->{ended};
-	    $child->{duration} = ($child->{ended} - $child->{started});
 	};
 	if(my $status = $@) {
 	    chomp($status);
 	    die sprintf("PARENT FAILURE: %s\n", $status);
 	}
-    } elsif(defined($child->{pid})) {
+    } elsif(defined($pid)) {
 	eval {
 	    reset_signal_handlers();
 	    $0 = $options->{name} if($options->{name});
 
-	    close($stdout_fh_read) or die sprintf("cannot close STDOUT: [%s]\n", $!);
-	    close($stderr_fh_read) or die sprintf("cannot close STDERR: [%s]\n", $!);
 	    open(STDOUT, '>&=', $stdout_fh_write) or die error("cannot redirect STDOUT: [%s]\n", $!);
 	    open(STDERR, '>&=', $stderr_fh_write) or die error("cannot redirect STDERR: [%s]\n", $!);
 
+	    close($stdout_fh_read) or die sprintf("cannot close STDOUT: [%s]\n", $!);
+	    close($stderr_fh_read) or die sprintf("cannot close STDERR: [%s]\n", $!);
+
 	    if(ref($execute) eq 'CODE') {
 		$execute->();
-		exit;
 	    } elsif(ref($execute) eq 'ARRAY') {
 		if(!exec {$execute->[0]} @$execute) {
 		    die sprintf("cannot exec: [%s]\n", $!);
 		}
 	    }
-	    die "NOTREACHED";
 	};
 	if(my $status = $@) {
 	    chomp($status);
 	    printf STDERR "CHILD FAILURE: %s\n", $status;
-	    exit(1);
+	    POSIX::_exit(1);
 	}
+	POSIX::_exit(0);
     } else {
 	die sprintf("cannot fork: [%s]\n", $!);
     }
@@ -764,7 +770,6 @@ sub spawn_bang {
 	if($options->{log}) {
 	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{log});
 	}
-
 	die sprintf("cannot %s: (exit code: %d)%s%s", $options->{name}, $child->{status}, $command, $why);
     }
     $child;
@@ -828,8 +833,8 @@ sub with_logging_spawn {
 
     croak("cannot execute: missing name\n") if(!$options->{name});
     my $name = $options->{name};
-    $options->{stderr_handler} = sub {warning("%s: %s\n", $name, shift)};
-    $options->{stdout_handler} = sub {info("%s: %s\n", $name, shift)};
+    $options->{stderr_handler} = sub { warning("%s: %s\n", $name, shift) };
+    $options->{stdout_handler} = sub { info("%s: %s\n", $name, shift) };
 
     my $command = "";
     if($options->{log_command_line} && ref($execute) eq 'ARRAY') {
@@ -931,17 +936,21 @@ sub with_cwd {
 	croak("argument ought to be function");
     }
     eval {
-        chdir($new_dir)
-            or die warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
+        chdir($new_dir) or die($!);
     };
     if(my $status = $@) {
 	chomp($status);
 	if($status =~ /No such file or directory/) {
-	    File::Path::mkpath($new_dir);
-	    chdir($new_dir)
-		or die warning("cannot change directory (%s): [%s]\n", $new_dir, $!);
-	} else {
-	    die sprintf("%s\n", $status);
+	    undef $status;
+	    eval {
+		File::Path::mkpath($new_dir);
+		chdir($new_dir) or die($!);
+	    };
+	    $status = $@;
+	}
+	if($status = $@) {
+	    chomp($status);
+	    die sprintf("cannot change directory (%s): [%s]\n", $new_dir, $status);
 	}
     }
     verbose("cwd: [%s]", $new_dir);
@@ -1013,7 +1022,7 @@ mischiefous programs.  The file name is also provided.
 sub with_temp(&) {
     my ($function) = @_;
     my ($fh,$fname) = File::Temp::tempfile();
-    my $result = eval {$function->($fh,$fname)};
+    my $result = eval { $function->($fh,$fname) };
     chomp(my $status = $@);
     close($fh) if(defined(fileno($fh)));
     unlink($fname);

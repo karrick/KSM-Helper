@@ -6,9 +6,6 @@ use warnings;
 use Carp;
 use Capture::Tiny qw(capture);
 use Test::More;
-# use Test::Class;
-# use base qw(Test::Class);
-# END { Test::Class->runtests }
 
 ########################################
 
@@ -25,6 +22,16 @@ sub is_pid_still_alive {
 
 ########################################
 
+sub with_nothing_out(&) {
+    my ($code) = @_;
+    my ($stdout,$stderr,$result) = capture {
+	$code->();
+    };
+    is($stdout, "");
+    is($stderr, "");
+    $result;
+}
+
 sub with_captured_log(&) {
     my $function = shift;
     # remaining args for function
@@ -38,7 +45,7 @@ sub with_captured_log(&) {
 				     croak("undefined msg") if !defined($msg);
 				     sprintf("%s: %s", $level, $msg);
 				 }});
-	eval { $function->(@_) };
+	eval { $function->() };
 	file_read($logfile);
     };
 }
@@ -77,6 +84,11 @@ sub test_spawn_croaks_if_neither_array_nor_code {
 }
 test_spawn_croaks_if_neither_array_nor_code();
 
+sub test_spawn_accepts_code_reference {
+    my $result = spawn(sub {42});
+}
+test_spawn_accepts_code_reference();
+
 sub test_spawn_returns_time_information {
     my $start = time();
     my $result = spawn(sub {42;}, {timeout => 5});
@@ -87,13 +99,8 @@ sub test_spawn_returns_time_information {
 }
 test_spawn_returns_time_information();
 
-sub test_spawn_accepts_code_reference {
-    my $result = spawn(sub {42});
-}
-test_spawn_accepts_code_reference();
-
 sub test_spawn_accepts_command_line_list {
-    my $result = spawn(['/bin/true']);
+    spawn(['bash','-c','true']);
 }
 test_spawn_accepts_command_line_list();
 
@@ -120,11 +127,11 @@ test_spawn_handles_fail_to_exec();
 sub test_spawn_returns_exit_status {
     my $result;
 
-    $result = spawn(['/bin/true']);
+    $result = spawn(['bash','-c','true']);
     is($result->{status}, 0);
 
-    $result = spawn(['/bin/false']);
-    isnt($result->{status}, 0);
+    $result = spawn(['bash','-c','false']);
+    is($result->{status}, 1);
 
     $result = spawn(sub {exit(42)});
     is($result->{status}, 42);

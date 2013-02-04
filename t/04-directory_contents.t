@@ -22,13 +22,21 @@ use KSM::Helper qw(:all);
 use constant TEST_DIR_COUNT => 2;
 use constant TEST_DOT_COUNT => 3;
 
+sub tempdir_wrapper_for_mac {
+    my $start = POSIX::getcwd();
+    chdir(File::Temp::tempdir()) or fail($!);
+    my $temp = POSIX::getcwd();
+    chdir($start) or fail($!);
+    $temp;
+}
+
 sub chdir_to_test_data_directory : Test(setup) {
     my ($self) = @_;
 
     $self->{start_directory} = POSIX::getcwd();
 
-    chomp($self->{source} = `mktemp -d`);
-    chomp($self->{destination} = `mktemp -d`);
+    $self->{source} = tempdir_wrapper_for_mac();
+    $self->{destination} = tempdir_wrapper_for_mac();
 
     my $template = "%s/%sfoo-%d.out";
     my $test_file;
@@ -96,9 +104,9 @@ sub test_directory_contents_includes_regular_files : Tests {
     }
 }
 
-sub test_directory_contents_returns_undef_when_lack_permissions : Tests {
+sub test_directory_contents_dies_when_lack_permissions : Tests {
     eval {directory_contents('/root')};
-    like($@, qr|Permission denied|);
+    isnt($@, "");
 }
 
 sub test_directory_contents_returns_empty_array_when_directory_empty : Tests {
