@@ -1,9 +1,9 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
 use Carp;
 use Test::More;
 use Test::Class;
@@ -16,35 +16,52 @@ use KSM::Helper qw(:all);
 
 ########################################
 
-sub cleanup_before_each_test : Tests(setup) {
-    system("rm -rf t/data");
+sub tempdir_wrapper_for_mac {
+    my $start = POSIX::getcwd();
+    chdir(File::Temp::tempdir()) or fail($!);
+    my $temp = POSIX::getcwd();
+    chdir($start) or fail($!);
+    $temp;
 }
 
-sub cleanup_after_all_tests : Tests(shutdown) {
-    system("rm -rf t/data");
+sub create_test_data_directory : Test(setup) {
+    my ($self) = @_;
+    $self->{start_directory} = POSIX::getcwd();
+    $self->{dir} = tempdir_wrapper_for_mac();
+}
+
+sub remove_test_artifact_and_return_to_start_directory : Test(teardown) {
+    my ($self) = @_;
+    chdir($self->{start_directory}) or fail($!);
+    File::Path::rmtree($self->{dir}) if -d $self->{dir};
 }
 
 ########################################
+# file_contents
 
-sub test_file_contents_works : Tests {
-    eval { file_contents("t/data/does-not-exist") };
+sub test_file_contents_dies_when_missing_file : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/does-not-exist", $self->{dir});
+    eval { file_contents($file) };
     like($@, qr/cannot open file/);
-    like($@, qr/\n$/);
-
-    my $blob = "La Cité interdite présente des chefs-d'oeuvre qu'elle va prêter au Louvre";
-    file_write("t/data/utf8.txt", $blob);
-    is(file_contents("t/data/utf8.txt"), $blob);
+    like($@, qr/\n$/, "error message ought terminate in newline");
 }
 
-sub test_file_read_croaks_when_missing_file : Tests {
-    eval { file_read("t/data/does-not-exist") };
-    like($@, qr/cannot open file/);
-    like($@, qr/\n$/);
+sub test_file_contents_returns_contents_of_blob : Tests {
+    my $blob = file_contents("t/fixtures/hello.txt");
+    like($blob, qr|日本語|);
+    like($blob, qr|שלום|);
 }
 
-sub test_file_read_error_ends_in_newline : Tests {
-    eval { file_read("t/data/does-not-exist") };
-    like($@, qr/\n$/);
+########################################
+# file_read
+
+sub test_file_read_dies_when_missing_file : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/does-not-exist", $self->{dir});
+    eval { file_contents($file) };
+    like($@, qr/cannot open file/);
+    like($@, qr/\n$/, "error message ought terminate in newline");
 }
 
 sub test_file_read_returns_contents_of_blob : Tests {
@@ -53,16 +70,21 @@ sub test_file_read_returns_contents_of_blob : Tests {
     like($blob, qr|שלום|);
 }
 
-sub test_file_write_actually_writes_utf_8_stuff : Tests {
-    my ($self) = @_;
-    my $blob = "La Cité interdite présente des chefs-d'oeuvre qu'elle va prêter au Louvre";
-    file_write("t/data/utf8.txt", $blob);
-    is(file_read("t/data/utf8.txt"), $blob);
-}
+########################################
+# file_write
 
 sub test_file_write_returns_contents_of_blob : Tests {
     my ($self) = @_;
+    my $file = sprintf("%s/utf8.txt", $self->{dir});
     my $blob = "La Cité interdite présente des chefs-d'oeuvre qu'elle va prêter au Louvre";
-    my $written = file_write("t/data/utf8.txt", $blob);
+    my $written = file_write($file, $blob);
     is($written, $blob);
+}
+
+sub test_file_write_actually_writes_utf_8_stuff : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/utf8.txt", $self->{dir});
+    my $blob = "La Cité interdite présente des chefs-d'oeuvre qu'elle va prêter au Louvre";
+    file_write($file, $blob);
+    is(file_read($file), $blob);
 }

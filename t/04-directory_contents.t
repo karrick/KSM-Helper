@@ -1,9 +1,9 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
 use Carp;
 use Test::More;
 use Test::Class;
@@ -68,7 +68,7 @@ sub remove_test_artifact_and_return_to_start_directory : Test(teardown) {
 
 ########################################
 
-sub test_directory_contents_croaks_when_directory_invalid : Tests {
+sub test_directory_contents_dies_when_directory_invalid : Tests {
     eval {directory_contents("t/data/invalid-directory")};
     like($@, qr|No such file or directory|);
 }

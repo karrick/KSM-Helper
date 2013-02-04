@@ -1,9 +1,9 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
 use Carp;
 use Test::More;
 use Test::Class;

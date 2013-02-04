@@ -1,9 +1,9 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
 use Carp;
 use Test::More;
 use Test::Class;
@@ -17,7 +17,7 @@ use KSM::Helper qw(:all);
 ########################################
 # all
 
-sub test_all_croaks_when_no_list : Tests {
+sub test_all_dies_when_no_list : Tests {
     eval { KSM::Helper::all(undef, sub { shift eq shift }) };
     like($@, qr|ought to be array reference|, "when list undef");
 
@@ -25,7 +25,7 @@ sub test_all_croaks_when_no_list : Tests {
     like($@, qr|ought to be array reference|, "when list not ref to array");
 }
 
-sub test_all_croaks_when_no_function : Tests {
+sub test_all_dies_when_no_function : Tests {
     eval { KSM::Helper::all([]) };
     like($@, qr/\bfunction\b/, "when function undef");
 
@@ -43,7 +43,7 @@ sub test_all_checks_each_element : Tests {
 ########################################
 # any
 
-sub test_any_croaks_when_no_list : Tests {
+sub test_any_dies_when_no_list : Tests {
     eval { KSM::Helper::any(undef, sub { shift eq shift }) };
     like($@, qr|ought to be array reference|, "when list undef");
 
@@ -51,7 +51,7 @@ sub test_any_croaks_when_no_list : Tests {
     like($@, qr|ought to be array reference|, "when list not ref to array");
 }
 
-sub test_any_croaks_when_no_function : Tests {
+sub test_any_dies_when_no_function : Tests {
     eval { KSM::Helper::any([]) };
     like($@, qr|ought to be function|, "when function undef");
 

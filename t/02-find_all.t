@@ -1,9 +1,9 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
 use Carp;
 use Test::More;
 use Test::Class;
@@ -16,7 +16,7 @@ use KSM::Helper qw(:all);
 
 ########################################
 
-sub test_croaks_when_no_list : Tests {
+sub test_dies_when_no_list : Tests {
     eval { find_all(undef, sub { shift eq shift }) };
     like($@, qr|ought to be array reference|);
 
@@ -24,7 +24,7 @@ sub test_croaks_when_no_list : Tests {
     like($@, qr|ought to be array reference|);
 }
 
-sub test_croaks_when_no_function : Tests {
+sub test_dies_when_no_function : Tests {
     eval { find_all([]) };
     like($@, qr|ought to be function|);
 

@@ -22,11 +22,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.4
+Version 2.0.5
 
 =cut
 
-our $VERSION = '2.0.4';
+our $VERSION = '2.0.5';
 
 =head1 SYNOPSIS
 
@@ -216,7 +216,7 @@ sub equals {
 		    } elsif(ref($first) eq 'CODE') {
 			equals(&$first,&$second);
 		    } else {
-			croak sprintf("do not know how to compare [%s] references\n", ref($first));
+			die sprintf("do not know how to compare [%s] references\n", ref($first));
 		    }
 		}
 	    } else {
@@ -366,7 +366,7 @@ Returns reference to array of strings, each string representing a file
 system object inside directory argument.  Includes dot files, but
 omits F<'.'> and F<'..'> from its response.
 
-Croaks when directory argument is not a directory.
+Dies when directory argument is not a directory.
 
     C<< # Prints the contents of the $some_dir directory: >>
     C<< my $contents = directory_contents($some_dir); >>
@@ -410,18 +410,18 @@ Takes and returns I<dirname>, but creates all required parent
 directories of I<dirname> in addition to I<dirname> if any do not
 already exist.
 
-It will croak if permissions are inadequate to create the required
+It will die if permissions are inadequate to create the required
 directories.
 
     C<< opendir(DH, ensure_directory_exists($queue)) >>
-    C<<     or croak sprintf("cannot opendir (%s): [%s]\n", $!); >>
+    C<<     or die sprintf("cannot opendir (%s): [%s]\n", $!); >>
 
 =cut
 
 sub ensure_directory_exists {
     my ($dirname) = @_;
     eval {
-	File::Path::mkpath($dirname); # NOTE: mkpath croaks if error
+	File::Path::mkpath($dirname); # NOTE: mkpath dies if error
     };
     if(my $status = $@) {
 	chomp($status);
@@ -603,7 +603,7 @@ the alternate host:
     C<< my $result = spawn(['hostname'], {host => 'host2'});
 
 The I<user> and I<host> options are only used in conjunction with
-execution of a command line program. This function will croak if you
+execution of a command line program. This function will die if you
 set either I<user> or I<host> option when the first parameter is a
 code reference.
 
@@ -632,10 +632,10 @@ sub spawn {
 	$execute = wrap_sudo($execute, $options->{user});
 	$execute = wrap_ssh($execute,  $options->{host});
     } elsif(ref($execute) eq 'CODE') {
-	croak("cannot change host without a command line list\n") if($options->{host});
-	croak("cannot change user without a command line list\n") if($options->{user});
+	croak("cannot change host without a command line list") if($options->{host});
+	croak("cannot change user without a command line list") if($options->{user});
     } else {
-	croak("nothing to execute: no function or list\n");
+	croak("nothing to execute: no function or list");
     }
 
     my $child = { started => time() };
@@ -831,7 +831,7 @@ Invoke I<execute>, routing C<STDOUT> and C<STDERR> to log facility.
 sub with_logging_spawn {
     my ($execute,$options) = @_;
 
-    croak("cannot execute: missing name\n") if(!$options->{name});
+    croak("cannot execute: missing name") if(!$options->{name});
     my $name = $options->{name};
     $options->{stderr_handler} = sub { warning("%s: %s\n", $name, shift) };
     $options->{stdout_handler} = sub { info("%s: %s\n", $name, shift) };
@@ -918,7 +918,7 @@ necessary, and execute I<function>.
 
 Even when an error is triggered in I<function>, the original working
 directory is restored upon function exit.  If the original working
-directory no longer exists when I<function> exits, this will croak
+directory no longer exists when I<function> exits, this will die
 with a suitable message.
 
     C<< with_cwd("/some/path", >>
@@ -974,7 +974,7 @@ upon completion of I<function>.
 Even when an error is triggered in I<function>, the lock is removed
 and the file handle is closed upon I<function> exit.
 
-This function will croak if another process has a lock on F<filename>.
+This function will die if another process has a lock on F<filename>.
 
     C<< with_lock("/some/file",  >>
     C<<           sub { >>
@@ -988,8 +988,8 @@ sub with_lock {
     my ($result,$status);
     croak("argument ought to be function") if(ref($function) ne 'CODE');
     verbose("getting exclusive lock: [%s]", $filename);
-    open(FILE, '<:encoding(UTF-8)', $filename) or croak error("cannot open (%s): [%s]\n", $filename, $!);
-    flock(FILE, LOCK_EX | LOCK_NB) or croak error("cannot lock (%s): [%s]\n", $filename, $!);
+    open(FILE, '<:encoding(UTF-8)', $filename) or die error("cannot open (%s): [%s]\n", $filename, $!);
+    flock(FILE, LOCK_EX | LOCK_NB) or die error("cannot lock (%s): [%s]\n", $filename, $!);
     verbose("have exclusive lock: [%s]", $filename);
     $result = eval {$function->()};
     chomp($status = $@);

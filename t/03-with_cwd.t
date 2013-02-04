@@ -1,14 +1,14 @@
 #!/usr/bin/env perl
 
 use utf8;
-use diagnostics;
 use strict;
 use warnings;
+
+use Carp;
 use File::Spec;
 use File::Temp qw(tempdir tempfile);
-use Carp;
-use Test::More;
 use Test::Class;
+use Test::More;
 use base qw(Test::Class);
 END { Test::Class->runtests }
 
@@ -70,7 +70,7 @@ sub with_captured_log(&) {
 # 2.  Log warnings and errors
 # 3.  Change directory back to original directory (???: original missing???)
 
-sub test_croaks_when_cannot_change_to_specified_directory : Tests {
+sub test_dies_when_cannot_change_to_specified_directory : Tests {
     with_captured_log {
 	eval {with_cwd(sprintf("%s/foo", File::Spec->rootdir()), sub {1})};
 	like($@, qr|cannot change directory|);
@@ -78,7 +78,7 @@ sub test_croaks_when_cannot_change_to_specified_directory : Tests {
     };
 }
 
-sub test_croaks_when_cannot_create_specified_directory : Tests {
+sub test_dies_when_cannot_create_specified_directory : Tests {
     with_captured_log {
 	eval {with_cwd(sprintf("%s/foo", File::Spec->rootdir()), sub {1})};
 	like($@, qr|cannot change directory|);
@@ -135,7 +135,7 @@ sub test_if_function_succeeds : Tests {
     like($log, qr|cwd: \[$dir\]|);
 }
 
-sub test_if_function_croaks : Tests {
+sub test_if_function_dies : Tests {
     my ($self) = @_;
     my $dir = POSIX::getcwd();
     my $log = with_captured_log {
@@ -143,9 +143,9 @@ sub test_if_function_croaks : Tests {
 		 sub {
 		     die "burp";
 		 });
-	like($@, qr|burp|, "should recroak");
+	like($@, qr|burp|, "ought to die");
 	is(POSIX::getcwd(), $dir,
-	   "should return to start directory");
+	   "ought chdir back to start directory");
     };
     like($log, qr|cwd: \[$self->{dir}\]|);
     like($log, qr|cwd: \[$dir\]|);

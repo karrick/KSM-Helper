@@ -1,20 +1,3 @@
-This is a list of ways to say hello in various languages.
-It is not intended to be comprehensive, but to demonstrate
-some of the character sets that Emacs supports.
-
-Non-ASCII examples:
-  Europe: ¡Hola!, Grüß Gott, Hyvää päivää, Tere õhtust, Bonġu
-          Cześć!, Dobrý den, Здравствуйте!, Γειά σας, გამარჯობა
-  Africa: ሠላም
-  Middle/Near East: שלום, السّلام عليكم
-  South Asia: નમસ્તે, नमस्ते, ನಮಸ್ಕಾರ, നമസ്കാരം, ଶୁଣିବେ,
-              ආයුබෝවන්, வணக்கம், నమస్కారం, བཀྲ་ཤིས་བདེ་ལེགས༎
-  South East Asia: ជំរាបសួរ, ສະບາຍດີ, မင်္ဂလာပါ, สวัสดีครับ, Chào bạn
-  East Asia: 你好, 早晨, こんにちは, 안녕하세요
-  Misc: Eĥoŝanĝo ĉiuĵaŭde, ⠓⠑⠇⠇⠕, ∀ p ∈ world • hello p  □
-  CJK variety: GB(元气,开发), BIG5(元氣,開發), JIS(元気,開発), KSC(元氣,開發)
-  Unicode charset: Eĥoŝanĝo ĉiuĵaŭde, Γειά σας, שלום, Здравствуйте!
-
 LANGUAGE (NATIVE NAME)	HELLO
 ----------------------	-----
 Amharic (አማርኛ)	ሠላም
@@ -70,27 +53,3 @@ Japanese (日本語)	こんにちは / ｺﾝﾆﾁﾊ
 Chinese (中文,普通话,汉语)	你好
 Cantonese (粵語,廣東話)	早晨, 你好
 Korean (한글)	안녕하세요 / 안녕하십니까
-
-
-
-Copyright (C) 2001-2012  Free Software Foundation, Inc.
-
-This file is part of GNU Emacs.
-
-GNU Emacs is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-GNU Emacs is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
-
-;;; Local Variables:
-;;; tab-width: 32
-;;; bidi-display-reordering: t
-;;; End:

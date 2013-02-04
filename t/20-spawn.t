@@ -3,13 +3,16 @@
 use utf8;
 use strict;
 use warnings;
+
+use Test::More;
+use Test::Class;
+use base qw(Test::Class);
+END { Test::Class->runtests }
+
 use Carp;
 use Capture::Tiny qw(capture);
-use Test::More;
-
-########################################
-
 use KSM::Logger qw(:all);
+
 use KSM::Helper qw(:all);
 
 ########################################
@@ -34,7 +37,6 @@ sub with_nothing_out(&) {
 
 sub with_captured_log(&) {
     my $function = shift;
-    # remaining args for function
     with_temp {
 	my (undef,$logfile) = @_;
 	KSM::Logger::initialize({level => KSM::Logger::DEBUG,
@@ -66,23 +68,23 @@ test_helper_with_captured_log();
 ########################################
 # spawn
 
-sub test_spawn_croaks_if_host_and_not_array {
+sub test_spawn_dies_if_host_and_not_array {
     eval {spawn(sub { 42; }, {host => "host"})};
     like($@, qr|cannot change host without a command line list|);
 }
-test_spawn_croaks_if_host_and_not_array();
+test_spawn_dies_if_host_and_not_array();
 
-sub test_spawn_croaks_if_user_and_not_array {
+sub test_spawn_dies_if_user_and_not_array {
     eval {spawn(sub { 42; }, {user => "user"})};
     like($@, qr|cannot change user without a command line list|);
 }
-test_spawn_croaks_if_user_and_not_array();
+test_spawn_dies_if_user_and_not_array();
 
-sub test_spawn_croaks_if_neither_array_nor_code {
+sub test_spawn_dies_if_neither_array_nor_code {
     eval {spawn("scalar")};
     like($@, qr|nothing to execute: no function or list|);
 }
-test_spawn_croaks_if_neither_array_nor_code();
+test_spawn_dies_if_neither_array_nor_code();
 
 sub test_spawn_accepts_code_reference {
     my $result = spawn(sub {42});
