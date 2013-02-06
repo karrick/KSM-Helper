@@ -22,11 +22,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.5
+Version 2.0.6
 
 =cut
 
-our $VERSION = '2.0.5';
+our $VERSION = '2.0.6';
 
 =head1 SYNOPSIS
 
@@ -261,7 +261,7 @@ sub find_first {
 	croak("argument ought to be function");
     } else {
 	foreach (@$list) {
-	    return $_ if(&{$predicate}($_));
+	    return $_ if($predicate->($_));
 	}
 	undef;
     }
@@ -330,7 +330,8 @@ sub command_loop {
 
     while(1) {
 	my $nfound = select(my $rout=$rin, undef, undef, $timeout);
-	if($nfound == -1) {
+	if(($nfound == -1) && ($!{EINTR} == 0)) {
+	    # die if error was something other than EINTR
 	    die sprintf("cannot select: [%s]\n", $!);
 	} elsif($nfound > 0) {
 	    if(vec($rout, $fd, 1) == 1) {
@@ -638,23 +639,6 @@ sub spawn {
 	croak("nothing to execute: no function or list");
     }
 
-    my $child = { started => time() };
-    my $hard_stop;
-    if(defined($options->{timeout})) {
-	$hard_stop = $child->{started} + $options->{timeout};
-    }
-
-    local $SIG{CHLD} = sub { 
-	local $!;
-	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
-	    my $status = $?;
-	    $child->{ended} = time();
-	    $child->{status} = ($status >> 8);
-	    $child->{signal} = ($status & 127);
-	    $child->{duration} = $child->{ended} - $child->{started};
-	}
-    };
-
     my ($stdout_fh_read,$stdout_fh_write);
     pipe($stdout_fh_read, $stdout_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
     $stdout_fh_write->autoflush(1);
@@ -663,13 +647,31 @@ sub spawn {
     pipe($stderr_fh_read, $stderr_fh_write) or die sprintf("cannot pipe: [%s]\n", $!);
     $stderr_fh_write->autoflush(1);
 
+    my ($exit_requested,$error_message);
+    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+
+    my $child;
+    my $children = {};
+    local $SIG{CHLD} = sub { 
+	local ($!,$?);
+	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
+	    # ignore reaping of other co-incident children
+	    if(defined($children->{$pid})) {
+		$children->{$pid}->{status} = $?;
+	    }
+	}
+    };
+
     if(my $pid = fork()) {
 	eval {
+	    $children->{$pid} = { started => time() };
 	    close($stdout_fh_write) or die sprintf("cannot close: [%s]\n", $!);
 	    close($stderr_fh_write) or die sprintf("cannot close: [%s]\n", $!);
 
-	    my ($status,$exit_requested);
-	    local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
+	    my ($hard_stop,$timeout);
+	    if(defined($options->{timeout})) {
+		$hard_stop = $children->{$pid}->{started} + $options->{timeout};
+	    }
 
 	    my ($rin,$stdout_buf,$stderr_buf) = ("","","");
 	    my $stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
@@ -679,11 +681,16 @@ sub spawn {
 	    vec($rin, $stdout_fd, 1) = 1;
 	    vec($rin, $stderr_fd, 1) = 1;
 
-	    while(!defined($child->{ended})) {
+	    do {
 		eval {
 		    my $timeout;
 		    if(defined($hard_stop)) {
 			$timeout = $hard_stop - time();
+		    }
+		    if($exit_requested
+		       || $error_message
+		       || (defined($timeout) && $timeout <= 0)) {
+			kill('TERM', $pid);
 		    }
 		    my $nfound = select(my $rout=$rin, undef, undef, $timeout);
 		    if(($nfound == -1) && ($!{EINTR} == 0)) {
@@ -696,26 +703,27 @@ sub spawn {
 			if(vec($rout, $stderr_fd, 1) == 1) {
 			    $stderr_buf = sysread_spooler($stderr_fh_read, $stderr_buf, $stderr_handler);
 			}
-		    } elsif($exit_requested ||
-			    ((!defined($child->{ended}))
-			     && (defined($hard_stop) && time() >= $hard_stop))) {
-			kill('TERM', $pid);
 		    }
 		};
 		if($@) {
-		    $status = $@;
-		    $@ = '';
-		    $! = 0;
-		    kill('TERM', $pid); # term child if parent erred
+		    chomp($error_message = $@);
 		}
-	    }
-	    exit if($exit_requested);
+	    } while(!defined($children->{$pid}->{status}));
+	    $child = {
+		ended => time(),
+		started => $children->{$pid}->{started},
+		status => $children->{$pid}->{status} >> 8,
+	        signal => $children->{$pid}->{status} & 127,
+	    };
+	    $child->{duration} = $child->{ended} - $child->{started};
+
 	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
 	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
-	    if($status) {
-		chomp($status);
-		die sprintf("%s\n", $status) if($status ne 'eof');
+
+	    if($error_message && $error_message ne 'eof') {
+		die sprintf("%s\n", $error_message);
 	    }
+	    exit if($exit_requested);
 	};
 	if(my $status = $@) {
 	    chomp($status);
@@ -777,9 +785,9 @@ sub spawn_bang {
 
 =head2 sysread_spooler
 
-Read from I<fh> using B<sysread> subroutine, chunking into lines,
-submitting each line to I<handler>. Prior to chunking, prepend
-I<buffer> to the contents of what is read. Return all data after the
+Read from B<fh> using B<sysread> subroutine, chunking into lines,
+submitting each line to B<handler>. Prior to chunking, prepend
+B<buffer> to the contents of what is read. Return all data after the
 last newline.
 
 =cut
