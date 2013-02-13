@@ -22,11 +22,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.0.6
+Version 2.1.0
 
 =cut
 
-our $VERSION = '2.0.6';
+our $VERSION = '2.1.0';
 
 =head1 SYNOPSIS
 
@@ -347,6 +347,7 @@ sub command_loop {
 	    $timeout_handler->();
 	}
     }
+    $stdout_handler->($stdout_buf) if(length($stdout_buf));
 }
 
 =head2 create_required_parent_directories
@@ -650,7 +651,6 @@ sub spawn {
     my ($exit_requested,$error_message);
     local $SIG{INT} = local $SIG{TERM} = sub {$exit_requested = 1};
 
-    my $child;
     my $children = {};
     local $SIG{CHLD} = sub { 
 	local ($!,$?);
@@ -661,6 +661,9 @@ sub spawn {
 	    }
 	}
     };
+
+    my ($stdout,$stderr) = ("","");
+    my $child = {};
 
     if(my $pid = fork()) {
 	eval {
@@ -674,8 +677,30 @@ sub spawn {
 	    }
 
 	    my ($rin,$stdout_buf,$stderr_buf) = ("","","");
-	    my $stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
-	    my $stderr_handler = $options->{stderr_handler} || sub { print STDERR shift };
+	    my $command = "";
+	    my ($stdout_handler,$stderr_handler);
+	    my $name = $options->{name} || "child";
+
+	    if($options->{log}) {
+	    	if($options->{capture}) {
+	    	    $stdout_handler ||= sub { $stdout .= info("%s: %s\n", $name, shift); };
+	    	    $stderr_handler ||= sub { $stderr .= warning("%s: %s\n", $name, shift); };
+	    	} else {
+	    	    $stdout_handler ||= sub { info("%s: %s\n", $name, shift); };
+	    	    $stderr_handler ||= sub { warning("%s: %s\n", $name, shift); };
+	    	}
+	    	if(ref($execute) eq 'ARRAY') {
+	    	    $command = sprintf(": (%s)", join(" ", @$execute));
+	    	}
+	    	info("executing %s%s\n", $name, $command);
+	    } elsif($options->{capture}) {
+	    	$stdout_handler ||= sub { $stdout .= shift; };
+	    	$stderr_handler ||= sub { $stderr .= shift; };
+	    } else {
+	    	$stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
+	    	$stderr_handler = $options->{stderr_handler} || sub { print STDERR shift };
+	    }
+
 	    my $stdout_fd = fileno($stdout_fh_read);
 	    my $stderr_fd = fileno($stderr_fh_read);
 	    vec($rin, $stdout_fd, 1) = 1;
@@ -709,21 +734,24 @@ sub spawn {
 		    chomp($error_message = $@);
 		}
 	    } while(!defined($children->{$pid}->{status}));
+
+	    if($error_message && $error_message ne 'eof') {
+		die sprintf("%s\n", $error_message);
+	    }
+	    exit if($exit_requested);
+
+	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
+	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
+
+	    $stdout_handler->($stdout_buf) if(length($stdout_buf));
+	    $stderr_handler->($stderr_buf) if(length($stderr_buf));
+
 	    $child = {
 		ended => time(),
 		started => $children->{$pid}->{started},
 		status => $children->{$pid}->{status} >> 8,
 	        signal => $children->{$pid}->{status} & 127,
 	    };
-	    $child->{duration} = $child->{ended} - $child->{started};
-
-	    close($stdout_fh_read) or die sprintf("cannot close: [%s]\n", $!);
-	    close($stderr_fh_read) or die sprintf("cannot close: [%s]\n", $!);
-
-	    if($error_message && $error_message ne 'eof') {
-		die sprintf("%s\n", $error_message);
-	    }
-	    exit if($exit_requested);
 	};
 	if(my $status = $@) {
 	    chomp($status);
@@ -743,9 +771,8 @@ sub spawn {
 	    if(ref($execute) eq 'CODE') {
 		$execute->();
 	    } elsif(ref($execute) eq 'ARRAY') {
-		if(!exec {$execute->[0]} @$execute) {
-		    die sprintf("cannot exec: [%s]\n", $!);
-		}
+		exec {$execute->[0]} @$execute;
+		die sprintf("cannot exec: [%s]\n", $!);
 	    }
 	};
 	if(my $status = $@) {
@@ -756,6 +783,12 @@ sub spawn {
 	POSIX::_exit(0);
     } else {
 	die sprintf("cannot fork: [%s]\n", $!);
+    }
+
+    $child->{duration} = $child->{ended} - $child->{started};
+    if($options->{capture}) {
+    	$child->{stdout} = $stdout;
+    	$child->{stderr} = $stderr;
     }
     $child;
 }
@@ -771,14 +804,14 @@ sub spawn_bang {
     my ($execute,$options) = @_;
     my $child = spawn($execute, $options);
     if($child->{status} != 0 && !$options->{nonzero_okay}) {
-	my ($command,$why) = ("","");
-	if(ref($execute) eq 'ARRAY') {
-	    $command = sprintf(": (%s)", join(" ", @$execute)) 
-	}
-	if($options->{log}) {
-	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{log});
-	}
-	die sprintf("cannot %s: (exit code: %d)%s%s", $options->{name}, $child->{status}, $command, $why);
+    	my ($command,$why) = ("","");
+    	if(ref($execute) eq 'ARRAY') {
+    	    $command = sprintf(": (%s)", join(" ", @$execute)) 
+    	}
+    	if($options->{child_log}) {
+    	    $why = sprintf(": To find out why, please consult its log file [%s]", $options->{child_log});
+    	}
+    	die sprintf("cannot %s: (exit code: %d)%s%s", $options->{name}, $child->{status}, $command, $why);
     }
     $child;
 }
@@ -821,13 +854,8 @@ captured.
 
 sub with_capture_spawn {
     my ($execute,$options) = @_;
-    my ($stdout,$stderr) = ("","");
-    $options->{stdout_handler} = sub { $stdout .= shift };
-    $options->{stderr_handler} = sub { $stderr .= shift };
-    my $child = spawn($execute, $options);
-    $child->{stdout} = $stdout;
-    $child->{stderr} = $stderr;
-    $child;
+    $options->{capture} ||= 1;
+    spawn($execute, $options);
 }
 
 =head2 with_logging_spawn
@@ -838,19 +866,8 @@ Invoke I<execute>, routing C<STDOUT> and C<STDERR> to log facility.
 
 sub with_logging_spawn {
     my ($execute,$options) = @_;
-
-    croak("cannot execute: missing name") if(!$options->{name});
-    my $name = $options->{name};
-    $options->{stderr_handler} = sub { warning("%s: %s\n", $name, shift) };
-    $options->{stdout_handler} = sub { info("%s: %s\n", $name, shift) };
-
-    my $command = "";
-    if($options->{log_command_line} && ref($execute) eq 'ARRAY') {
-	$command = sprintf(": (%s)", join(" ", @$execute));
-    }
-
-    info("executing %s%s\n", $name, $command);
-    spawn_bang($execute, $options);
+    $options->{log} ||= 1;
+    spawn($execute, $options);
 }
 
 =head2 wrap_ssh
