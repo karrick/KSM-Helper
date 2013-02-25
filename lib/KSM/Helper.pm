@@ -15,6 +15,7 @@ use POSIX qw(:sys_wait_h);
 use KSM::Logger qw(:all);
 
 use constant BUFSIZ => 4096;
+use constant DEAD_CHILD_STATUS => 0;
 
 =head1 NAME
 
@@ -22,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.0
+Version 2.1.1
 
 =cut
 
-our $VERSION = '2.1.0';
+our $VERSION = '2.1.1';
 
 =head1 SYNOPSIS
 
@@ -655,10 +656,7 @@ sub spawn {
     local $SIG{CHLD} = sub { 
 	local ($!,$?);
 	while ((my $pid = waitpid(-1, WNOHANG)) > 0) {
-	    # ignore reaping of other co-incident children
-	    if(defined($children->{$pid})) {
-		$children->{$pid}->{status} = $?;
-	    }
+	    $children->{$pid}->{status} = $?;
 	}
     };
 
@@ -715,7 +713,10 @@ sub spawn {
 		    if($exit_requested
 		       || $error_message
 		       || (defined($timeout) && $timeout <= 0)) {
-			kill('TERM', $pid);
+			if(kill('TERM', $pid) == 0) {
+			    # cannot send it signal: assume terminated
+			    $children->{$pid}->{status} = DEAD_CHILD_STATUS;
+			}
 		    }
 		    my $nfound = select(my $rout=$rin, undef, undef, $timeout);
 		    if(($nfound == -1) && ($!{EINTR} == 0)) {
