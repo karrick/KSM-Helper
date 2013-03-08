@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.1
+Version 2.1.2
 
 =cut
 
-our $VERSION = '2.1.1';
+our $VERSION = '2.1.2';
 
 =head1 SYNOPSIS
 
@@ -681,19 +681,19 @@ sub spawn {
 
 	    if($options->{log}) {
 	    	if($options->{capture}) {
-	    	    $stdout_handler ||= sub { $stdout .= info("%s: %s\n", $name, shift); };
-	    	    $stderr_handler ||= sub { $stderr .= warning("%s: %s\n", $name, shift); };
+	    	    $stdout_handler = sub { my ($line) = @_; info("%s STDOUT: %s", $name, $line); $stdout .= $line; };
+	    	    $stderr_handler = sub { my ($line) = @_; info("%s STDERR: %s", $name, $line); $stderr .= $line; };
 	    	} else {
-	    	    $stdout_handler ||= sub { info("%s: %s\n", $name, shift); };
-	    	    $stderr_handler ||= sub { warning("%s: %s\n", $name, shift); };
+	    	    $stdout_handler = sub { info("%s STDOUT: %s", $name, shift); };
+	    	    $stderr_handler = sub { info("%s STDERR: %s", $name, shift); };
 	    	}
 	    	if(ref($execute) eq 'ARRAY') {
 	    	    $command = sprintf(": (%s)", join(" ", @$execute));
 	    	}
 	    	info("executing %s%s\n", $name, $command);
 	    } elsif($options->{capture}) {
-	    	$stdout_handler ||= sub { $stdout .= shift; };
-	    	$stderr_handler ||= sub { $stderr .= shift; };
+	    	$stdout_handler = sub { $stdout .= shift; };
+	    	$stderr_handler = sub { $stderr .= shift; };
 	    } else {
 	    	$stdout_handler = $options->{stdout_handler} || sub { print STDOUT shift };
 	    	$stderr_handler = $options->{stderr_handler} || sub { print STDERR shift };
