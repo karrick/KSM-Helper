@@ -290,23 +290,23 @@ sub test_spawn_log_logs_command_and_args : Tests {
     };
 }
 
-sub test_spawn_does_not_handle_excess_stdout : Tests {
-    with_nothing_out {
-	my $log = with_captured_log {
-	    spawn(sub { print STDOUT "foo bar\n" },
-		  { name => "flubber", log => 1 });
-	};
-	unlike($log, qr|WARNING: flubber|);
-    };
-}
-
-sub test_spawn_does_not_handle_excess_stderr : Tests {
+sub test_spawn_does_not_send_excess_newline_to_stdout : Tests {
     with_nothing_out {
 	my $log = with_captured_log {
 	    spawn(sub { print STDERR "foo bar\n" },
 		  { name => "flubber", log => 1 });
 	};
-	unlike($log, qr|INFO: flubber|);
+	unlike($log, qr|STDOUT|);
+    };
+}
+
+sub test_spawn_does_not_send_excess_newline_to_stderr : Tests {
+    with_nothing_out {
+	my $log = with_captured_log {
+	    spawn(sub { print STDOUT "foo bar\n" },
+		  { name => "flubber", log => 1 });
+	};
+	unlike($log, qr|STDERR|);
     };
 }
 
@@ -383,6 +383,6 @@ sub test_with_logging_spawn_redirects_stdout_and_stderr : Tests {
 	    },
 	    {name => 'TEST2'})
     };
-    like($log, qr|INFO: TEST2: stdout|);
-    like($log, qr|WARNING: TEST2: stderr|);
+    like($log, qr|INFO: TEST2 STDOUT: stdout|);
+    like($log, qr|INFO: TEST2 STDERR: stderr|);
 }
