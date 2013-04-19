@@ -81,7 +81,7 @@ sub test_spawn_accepts_code_reference : Tests {
 
 sub test_spawn_returns_time_information : Tests {
     my $start = time();
-    my $result = spawn(sub {42;}, {timeout => 5});
+    my $result = spawn(sub {42}, {timeout => 5});
     my $end = time();
     ok($start <= $result->{started}, "should have start time");
     ok($result->{duration} >=0, "should have numerical duration time");
@@ -152,6 +152,8 @@ sub test_spawn_resets_signal_handlers_before_invoking_child : Tests {
     is(ref($SIG{TERM}), 'CODE');
 }
 
+########################################
+
 sub test_spawn_bang : Tests {
     spawn_bang(sub {42});
 
@@ -174,6 +176,22 @@ sub test_spawn_bang_reports_name_of_child_log : Tests {
     };
     is($stdout, "");
     like($stderr, qr|suicide|);
+}
+
+sub test_spawn_bang_does_not_die_if_status_okay : Tests {
+    with_nothing_out {
+	spawn_bang(['bash','-c','true']);
+    };
+}
+
+sub test_spawn_bang_dies_if_status_not_okay : Tests {
+    with_nothing_out {
+	eval {
+	    spawn_bang(['bash','-c','false'], {name => "flubber"});
+	};
+	like($@, qr|cannot|);
+	like($@, qr|flubber|);
+    };
 }
 
 ########################################
@@ -345,6 +363,9 @@ sub test_spawn_with_stdout_handler_directs_child_stdout_to_handler : Tests {
     is($out, "foo\nbar\n");
 }
 
+########################################
+# legacy function supported for API reasons
+
 sub test_with_capture_spawn : Tests {
     my $child = with_capture_spawn(sub {
 	print STDOUT "foo\n";
@@ -354,6 +375,33 @@ sub test_with_capture_spawn : Tests {
     is($child->{stderr}, "bar\n");
     ok(defined($child->{status}));
     ok(defined($child->{signal}));
+}
+
+########################################
+
+sub _test_user_change_actually_works : Tests {
+    my $euid = $>;
+    my $egid = $);
+
+    eval {
+    };
+    my $status = $@;
+    if($status) {
+    }
+    $> = $egid;
+    $> = $euid;
+    
+    my $child = spawn(
+	sub {
+	    # my ($uid,$gid) = ((getpwnam($ENV{LOGNAME}))[2,3]);
+	    my ($uid,$gid) = ((getpwuid($>))[2,3]);
+	    printf STDOUT "%d", $uid;
+	    printf STDERR "%d", $gid;
+	},
+	{capture => 1});
+    is($child->{stdout}, $>);
+    my @gids = split(/\s/, $));
+    is($child->{stderr}, shift(@gids));
 }
 
 ########################################

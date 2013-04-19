@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.2
+Version 2.1.3
 
 =cut
 
-our $VERSION = '2.1.2';
+our $VERSION = '2.1.3';
 
 =head1 SYNOPSIS
 
@@ -84,6 +84,7 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	strip
 
 	with_cwd
+	with_euid
 	with_lock
 	with_temp
 
@@ -632,8 +633,12 @@ sub spawn {
     my ($execute,$options) = @_;
 
     if(ref($execute) eq 'ARRAY') {
-	$execute = wrap_sudo($execute, $options->{user});
-	$execute = wrap_ssh($execute,  $options->{host});
+	if($options->{host} && $options->{user}) {
+	    $execute = wrap_sudo($execute, $options->{user});
+	    $execute = wrap_ssh($execute,  $options->{host});
+	    delete $options->{user};
+	    delete $options->{host};
+	}
     } elsif(ref($execute) eq 'CODE') {
 	croak("cannot change host without a command line list") if($options->{host});
 	croak("cannot change user without a command line list") if($options->{user});
@@ -768,6 +773,17 @@ sub spawn {
 
 	    close($stdout_fh_read) or die sprintf("cannot close STDOUT: [%s]\n", $!);
 	    close($stderr_fh_read) or die sprintf("cannot close STDERR: [%s]\n", $!);
+
+	    if($options->{user}) {
+		my ($uid,$gid) = ((getpwnam($options->{user}))[2,3]);
+		if(defined($uid) && defined($gid)) {
+		    # NOTE: must change gid prior to changing uid
+		    $) = $gid if($) != $gid);
+		    $> = $uid if($> != $uid);
+		} else {
+		    die sprintf("unknown user: %s\n", $options->{user});
+		}
+	    }
 
 	    if(ref($execute) eq 'CODE') {
 		$execute->();
@@ -990,6 +1006,58 @@ sub with_cwd {
     $result;
 }
 
+=head2 with_euid
+
+Executes I<function> with a temporary file, cleaning it up upon
+completion of I<function>.
+
+Returns both the opened file handle and the file name.  It is
+recommended that software is written to only use the file handle, as
+this prevents some types of race conditions that could be leveraged by
+mischiefous programs.  The file name is also provided.
+
+    C<< my $filename = "data.txt"; >>
+    C<< with_euid(sub { >>
+    C<<               my ($fh,$fname) = @_; >>
+    C<<               printf $fh "some test data\n"; >>
+    C<<               close $fh; >>
+    C<<               rename($fname,$filename); >>
+    C<<           }); >>
+
+=cut
+
+sub with_euid {
+    my ($euid,$function) = @_;
+    my $status;
+    my $save_euid = $>;
+
+    $> = $euid or die sprintf("cannot change euid (%s): [%s]\n", $euid, $!);
+
+    my $result = eval { $function->() };
+    chomp($status = $@);
+
+    $> = $save_euid or die sprintf("cannot change euid (%s): [%s]\n", $save_euid, $!);
+    die sprintf("%s\n", $status) if($status);
+    $result;
+}
+
+sub with_eff_user_name {
+    my ($name,$function) = @_;
+    my $status;
+    my $save_euid = $>;
+
+    my ($uid,$gid) = ((getpwnam($name))[2,3]);
+
+    $> = $uid or die sprintf("cannot change name (%s): [%s]\n", $uid, $!);
+
+    my $result = eval { $function->() };
+    chomp($status = $@);
+
+    $> = $save_euid or die sprintf("cannot change euid (%s): [%s]\n", $save_euid, $!);
+    die sprintf("%s\n", $status) if($status);
+    $result;
+}
+
 =head2 with_lock
 
 Execute I<function> with F<filename> locked.
@@ -1014,12 +1082,12 @@ sub with_lock {
     my ($result,$status);
     croak("argument ought to be function") if(ref($function) ne 'CODE');
     verbose("getting exclusive lock: [%s]", $filename);
-    open(FILE, '<:encoding(UTF-8)', $filename) or die error("cannot open (%s): [%s]\n", $filename, $!);
-    flock(FILE, LOCK_EX | LOCK_NB) or die error("cannot lock (%s): [%s]\n", $filename, $!);
+    open(my $fh, '<:encoding(UTF-8)', $filename) or die error("cannot open (%s): [%s]\n", $filename, $!);
+    flock($fh, LOCK_EX | LOCK_NB) or die error("cannot lock (%s): [%s]\n", $filename, $!);
     verbose("have exclusive lock: [%s]", $filename);
     $result = eval {$function->()};
     chomp($status = $@);
-    close(FILE) or die error("cannot close (%s): [%s]\n", $filename, $!);
+    close($fh) or die error("cannot close (%s): [%s]\n", $filename, $!);
     verbose("released exclusive lock: [%s]", $filename);
     die sprintf("%s\n", $status) if($status);
     $result;

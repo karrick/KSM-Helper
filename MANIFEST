@@ -1,10 +1,10 @@
 Changes
-MANIFEST
-MANIFEST.SKIP
-Makefile.PL
-README
 ignore.txt
 lib/KSM/Helper.pm
+Makefile.PL
+MANIFEST
+MANIFEST.SKIP
+README
 t/00-load.t
 t/01-any-all.t
 t/01-directories.t
@@ -12,6 +12,7 @@ t/01-file_contents.t
 t/01-shell_quote.t
 t/01-split_lines_and_prune_comments.t
 t/01-strip.t
+t/01-with_euid.t
 t/01-with_temp.t
 t/01-wrap_ssh.t
 t/01-wrap_sudo.t
@@ -22,8 +23,9 @@ t/03-with_cwd.t
 t/03-with_lock.t
 t/04-directory_contents.t
 t/20-spawn.t
-t/fixtures/hello.txt
 t/boilerplate.t
+t/fixtures/hello.txt
+t/integrated/10-with_database.t
 t/manifest.t
 t/pod-coverage.t
 t/pod.t

@@ -19,6 +19,16 @@ use KSM::Helper ':all';
 ########################################
 # with_captured_log
 
+sub with_nothing_out(&) {
+    my ($code) = @_;
+    my ($stdout,$stderr,$result) = capture {
+	$code->();
+    };
+    is($stdout, "");
+    is($stderr, "");
+    $result;
+}
+
 sub with_captured_log(&) {
     my $function = shift;
     # remaining args for function
@@ -99,4 +109,19 @@ sub test_releases_lock_if_function_dies : Tests {
 		  });
     };
     like($log, qr/released exclusive lock/);
+}
+
+sub test_supports_nesting_of_calls : Tests {
+    with_nothing_out {
+	eval {
+	    with_lock(__FILE__, 
+		      sub {
+			  with_lock(File::Basename::dirname(__FILE__),
+				    sub {
+					42;
+				    });
+		      });
+	};
+	unlike($@, qr|Bad file descriptor|);
+    };
 }
