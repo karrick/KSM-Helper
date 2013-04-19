@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.3
+Version 2.1.4
 
 =cut
 
-our $VERSION = '2.1.3';
+our $VERSION = '2.1.4';
 
 =head1 SYNOPSIS
 
@@ -395,11 +395,11 @@ sub directory_contents {
     $dir ||= '.';
     my $files = [];
     eval {
-	opendir(DH, $dir) or die sprintf("cannot opendir: [%s]\n", $!);
-	foreach (readdir DH) {
+	opendir(my $dh, $dir) or die sprintf("cannot opendir: [%s]\n", $!);
+	foreach (readdir $dh) {
 	    push(@$files, $_) unless /^\.{1,2}$/; # ??? maybe change
 	}
-	closedir(DH);
+	closedir($dh);
     };
     if(my $status = $@) {
 	chomp($status);
@@ -417,7 +417,7 @@ already exist.
 It will die if permissions are inadequate to create the required
 directories.
 
-    C<< opendir(DH, ensure_directory_exists($queue)) >>
+    C<< opendir(my $dh, ensure_directory_exists($queue)) >>
     C<<     or die sprintf("cannot opendir (%s): [%s]\n", $!); >>
 
 =cut
@@ -445,9 +445,9 @@ sub for_each_non_dotted_item_in_directory {
     my ($directory,$fn) = @_;
 
     eval {
-	opendir(DH, $directory)
+	opendir(my $dh, $directory)
 	    or die sprintf("cannot opendir (%s): [%s]\n", $directory, $!);
-	while(my $child = readdir(DH)) {
+	while(my $child = readdir($dh)) {
 	    next if $child =~ /^\./;
 	    eval {
 		$fn->(sprintf("%s/%s", $directory, $child));
@@ -457,7 +457,7 @@ sub for_each_non_dotted_item_in_directory {
 		warning("cannot process child: [%s]\n", $status);
 	    }
 	}
-	closedir(DH);
+	closedir($dh);
     };
     if(my $status = $@) {
 	chomp($status);
@@ -491,12 +491,12 @@ Opens and reads the file assuming UTF-8 content.
 sub file_read {
     my ($filename) = @_;
     local $/;
-    open(FH, '<:encoding(UTF-8)', $filename)
+    open(my $fh, '<:encoding(UTF-8)', $filename)
 	or die sprintf("cannot open file (%s): [%s]\n", $filename, $!);
-    # flock(FH, LOCK_SH)
+    # flock($fh, LOCK_SH)
     #	or die sprintf("cannot lock (%s): [%s]\n", $filename, $!);
-    my $contents = <FH>;
-    close(FH);
+    my $contents = <$fh>;
+    close($fh);
     $contents;
 }
 
@@ -516,20 +516,21 @@ sub file_write {
     my $dirname = File::Basename::dirname($filename);
     my $basename = File::Basename::basename($filename);
     my $tempname = sprintf("%s/.%s", $dirname, $basename);
+    my $fh;
 
     eval {
 	create_required_parent_directories($tempname);
-	open(FH, '>:encoding(UTF-8)', $tempname)
+	open($fh, '>:encoding(UTF-8)', $tempname)
 	    or die sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
-	flock(FH, LOCK_EX)
+	flock($fh, LOCK_EX)
 	    or die sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
-	print FH $blob;
-	close(FH);
+	print $fh $blob;
+	close($fh);
 	rename($tempname, $filename)
 	    or die sprintf("cannot rename file (%s) -> (%s): [%s]\n", $tempname, $filename, $!);
     };
     my $status = $@;
-    close(FH);
+    close($fh) if(defined(fileno($fh)));
     if($status) {
 	chomp($status);
 	die sprintf("cannot write file (%s): [%s]\n", $tempname, $status);
