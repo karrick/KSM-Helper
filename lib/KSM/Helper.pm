@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.4
+Version 2.1.5
 
 =cut
 
-our $VERSION = '2.1.4';
+our $VERSION = '2.1.5';
 
 =head1 SYNOPSIS
 
@@ -776,11 +776,28 @@ sub spawn {
 	    close($stderr_fh_read) or die sprintf("cannot close STDERR: [%s]\n", $!);
 
 	    if($options->{user}) {
-		my ($uid,$gid) = ((getpwnam($options->{user}))[2,3]);
+		# cannot use (3)sudo to change user because of security policy
+		my ($logname,$uid,$gid,$home) = ((getpwnam($options->{user}))[0,2,3,7]);
 		if(defined($uid) && defined($gid)) {
 		    # NOTE: must change gid prior to changing uid
-		    $) = $gid if($) != $gid);
-		    $> = $uid if($> != $uid);
+		    if($( != $gid) {
+			verbose("changing gid: [%d]", $gid);
+			POSIX::setgid($gid); # change real and effective gid
+		    }
+		    if($< != $uid) {
+			verbose("changing uid: [%d]", $uid);
+			POSIX::setuid($uid); # change real and effective uid
+		    }
+		    # NOTE: per (3)sudo and (5)sudoers, chdir and set env
+		    if($home && -d $home) {
+			verbose("changing cwd: [%s]", $home);
+			chdir($home); # ignore error like sudo does
+		    }
+		    $ENV{HOME} = $home;
+		    $ENV{LOGNAME} = $logname;
+		    $ENV{USERNAME} = $logname;
+		    $ENV{USER} = $logname;
+		    verbose("updated environment: (HOME [%s] LOGNAME [%s] USERNAME [%s] USER [%s])", $ENV{HOME}, $ENV{LOGNAME}, $ENV{USERNAME}, $ENV{USER});
 		} else {
 		    die sprintf("unknown user: %s\n", $options->{user});
 		}
