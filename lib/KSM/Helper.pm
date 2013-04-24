@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.7
+Version 2.1.8
 
 =cut
 
-our $VERSION = '2.1.7';
+our $VERSION = '2.1.8';
 
 =head1 SYNOPSIS
 
@@ -530,7 +530,7 @@ sub file_write {
 	    or die sprintf("cannot rename file (%s) -> (%s): [%s]\n", $tempname, $filename, $!);
     };
     my $status = $@;
-    close($fh) if(defined(fileno($fh)));
+    close($fh) if(defined($fh) && defined(fileno($fh)));
     if($status) {
 	chomp($status);
 	die sprintf("cannot write file (%s): [%s]\n", $tempname, $status);

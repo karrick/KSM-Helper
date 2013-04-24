@@ -4,6 +4,7 @@ use utf8;
 use strict;
 use warnings;
 
+use Capture::Tiny qw(capture);
 use Carp;
 use Test::More;
 use Test::Class;
@@ -13,6 +14,35 @@ END { Test::Class->runtests }
 ########################################
 
 use KSM::Helper qw(:all);
+
+########################################
+
+sub with_nothing_out(&) {
+    my ($code) = @_;
+    my ($stdout,$stderr,$result) = capture {
+	$code->();
+    };
+    is($stdout, "");
+    is($stderr, "");
+    $result;
+}
+
+sub with_captured_log(&) {
+    my $function = shift;
+    with_temp {
+	my (undef,$logfile) = @_;
+	KSM::Logger::initialize({level => KSM::Logger::DEBUG,
+				 filename_template => $logfile,
+				 reformatter => sub {
+				     my ($level,$msg) = @_;
+				     croak("undefined level") if !defined($level);
+				     croak("undefined msg") if !defined($msg);
+				     sprintf("%s: %s", $level, $msg);
+				 }});
+	eval { $function->() };
+	file_read($logfile);
+    };
+}
 
 ########################################
 
@@ -96,3 +126,11 @@ sub test_file_write_elides_writting_when_blob_undefined : Tests {
     ok(-e $file);
 }
 
+sub test_file_write_handles_errors_without_printing_to_stdout_or_stderr : Tests {
+    with_nothing_out {
+	my $file = "/root/tmp/utf8.txt";
+	eval {file_write($file)};
+	like($@, qr|cannot write file|);
+	ok(! -e $file);
+    };
+}
