@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.5
+Version 2.1.7
 
 =cut
 
-our $VERSION = '2.1.5';
+our $VERSION = '2.1.7';
 
 =head1 SYNOPSIS
 
@@ -524,7 +524,7 @@ sub file_write {
 	    or die sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
 	flock($fh, LOCK_EX)
 	    or die sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
-	print $fh $blob;
+	print $fh $blob if defined($blob);
 	close($fh);
 	rename($tempname, $filename)
 	    or die sprintf("cannot rename file (%s) -> (%s): [%s]\n", $tempname, $filename, $!);
@@ -634,10 +634,12 @@ sub spawn {
     my ($execute,$options) = @_;
 
     if(ref($execute) eq 'ARRAY') {
-	if($options->{host} && $options->{user}) {
-	    $execute = wrap_sudo($execute, $options->{user});
+	if($options->{host}) {
+	    if($options->{user}) {
+		$execute = wrap_sudo($execute, $options->{user});
+		delete $options->{user};
+	    }
 	    $execute = wrap_ssh($execute,  $options->{host});
-	    delete $options->{user};
 	    delete $options->{host};
 	}
     } elsif(ref($execute) eq 'CODE') {

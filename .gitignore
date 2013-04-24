@@ -4,3 +4,4 @@ Makefile.old
 blib/
 log/
 pm_to_blib
+MANIFEST.SKIP.bak

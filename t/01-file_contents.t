@@ -88,3 +88,11 @@ sub test_file_write_actually_writes_utf_8_stuff : Tests {
     file_write($file, $blob);
     is(file_read($file), $blob);
 }
+
+sub test_file_write_elides_writting_when_blob_undefined : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/utf8.txt", $self->{dir});
+    file_write($file);
+    ok(-e $file);
+}
+
