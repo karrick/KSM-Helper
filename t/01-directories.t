@@ -75,3 +75,23 @@ sub test_create_required_parent_directories_creates_directories : Tests {
     ok(create_required_parent_directories($file));
     ok(-d sprintf("%s/foo", $self->{dir}));
 }
+
+########################################
+
+sub test_ensure_directories_exist_dies_if_cannot_create : Tests {
+    eval {ensure_directories_exist("/root/foo/bar")};
+    like($@, qr/Permission/);
+}
+
+sub test_ensure_directories_exist_returns_same_name : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/foo/bar.baz", $self->{dir});
+    is(ensure_directories_exist($file), $file);
+}
+
+sub test_ensure_directories_exist_creates_directories : Tests {
+    my ($self) = @_;
+    my $file = sprintf("%s/foo/bar.baz", $self->{dir});
+    ok(ensure_directories_exist($file));
+    ok(-d sprintf("%s/foo", $self->{dir}));
+}

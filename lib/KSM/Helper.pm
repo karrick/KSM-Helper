@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.8
+Version 2.1.9
 
 =cut
 
-our $VERSION = '2.1.8';
+our $VERSION = '2.1.9';
 
 =head1 SYNOPSIS
 
@@ -62,6 +62,8 @@ our %EXPORT_TAGS = ( 'all' => [qw(
 	command_loop
 
 	create_required_parent_directories
+	ensure_directories_exist
+
 	directory_contents
 	ensure_directory_exists
 	for_each_non_dotted_item_in_directory
@@ -362,6 +364,21 @@ sub create_required_parent_directories {
     my ($filename) = @_;
     ensure_directory_exists(File::Basename::dirname($filename));
     $filename;
+}
+
+=head2 ensure_directories_exist
+
+Create any parent directories required for file.
+
+DEPRECATED
+
+Provided for backward compatibility.  Consider using
+create_required_parent_directories instead.
+
+=cut
+
+sub ensure_directories_exist {
+    create_required_parent_directories(shift);
 }
 
 =head2 directory_contents
