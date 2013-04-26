@@ -23,11 +23,11 @@ KSM::Helper - The great new KSM::Helper!
 
 =head1 VERSION
 
-Version 2.1.9
+Version 2.1.10
 
 =cut
 
-our $VERSION = '2.1.9';
+our $VERSION = '2.1.10';
 
 =head1 SYNOPSIS
 
@@ -529,30 +529,44 @@ the value of the data written.
 =cut
 
 sub file_write {
-    my ($filename,$blob) = @_;
+    my ($filename,$contents) = @_;
+
     my $dirname = File::Basename::dirname($filename);
     my $basename = File::Basename::basename($filename);
     my $tempname = sprintf("%s/.%s", $dirname, $basename);
-    my $fh;
+    my ($fh1, $fh2);
 
     eval {
 	create_required_parent_directories($tempname);
-	open($fh, '>:encoding(UTF-8)', $tempname)
-	    or die sprintf("cannot open file (%s): [%s]\n", $tempname, $!);
-	flock($fh, LOCK_EX)
-	    or die sprintf("cannot lock (%s): [%s]\n", $tempname, $!);
-	print $fh $blob if defined($blob);
-	close($fh);
+	open($fh1, '>>:encoding(UTF-8)', $filename)
+	    or die sprintf("cannot open (%s): [%s]\n", $filename, $!);
+	flock($fh1, LOCK_EX | LOCK_NB)
+	    or die sprintf("cannot lock (%s): [%s]\n", $filename, $!);
+	# we own the filename now
+
+	# create temp file
+	open($fh2, '>:encoding(UTF-8)', $tempname)
+	    or die sprintf("cannot open (%s): [%s]\n", $tempname, $!);
+	if(defined($contents)) {
+	    printf $fh2 $contents 
+		or die sprintf("cannot write (%s): [%s]\n", $tempname, $!);
+	}
+	close($fh2)
+	    or die sprintf("cannot close (%s): [%s]\n", $tempname, $!);
+	
 	rename($tempname, $filename)
 	    or die sprintf("cannot rename file (%s) -> (%s): [%s]\n", $tempname, $filename, $!);
+
+	close($fh1)
+	    or die sprintf("cannot close (%s): [%s]\n", $filename, $!);
     };
-    my $status = $@;
-    close($fh) if(defined($fh) && defined(fileno($fh)));
+    chomp(my $status = $@);
+    close($fh1) if(defined($fh1) && defined(fileno($fh1)));
+    close($fh2) if(defined($fh2) && defined(fileno($fh2)));
     if($status) {
-	chomp($status);
-	die sprintf("cannot write file (%s): [%s]\n", $tempname, $status);
+	die sprintf("cannot write file (%s): [%s]\n", $filename, $status);
     }
-    $blob;
+    return $contents;
 }
 
 =head2 reset_signal_handlers
