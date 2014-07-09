@@ -1,7 +1,9 @@
 KSM-Helper-*.tar.gz
+MANIFEST.SKIP.bak
+MYMETA.json
+MYMETA.yml
 Makefile
 Makefile.old
 blib/
 log/
 pm_to_blib
-MANIFEST.SKIP.bak
